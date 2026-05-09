@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { prisma } from "../config/database";
+import { webSearch, webFetch } from "./web-intake";
 
 // ── Model config ──────────────────────────────────────
 
@@ -39,11 +40,31 @@ If the user mentions a venue you don't yet have ("the sky bar", "our breakfast c
 # Walkthrough mode
 
 When the user agrees to be walked through their setup ("yes", "sure", "walk me through it", "help me set this up"):
-- First, call get_hotel_state to see exactly what's missing.
-- Then conduct a guided one-question-at-a-time walkthrough.
+
+## Step A — try the online shortcut FIRST
+
+Before manual Q&A, ALWAYS offer to autofill from the web:
+
+  "Quick shortcut — if you have a website or are on Google Maps / Booking.com, drop a URL or just confirm your hotel name and I'll fetch what I can. I'll show you what I find and you confirm or correct each item. Faster than typing it all out."
+
+If the user gives a URL: call web_fetch, then look for menu/hours/services/spa pages via the returned links and follow up with more web_fetch calls. 
+If the user just confirms the hotel name + city: call web_search to find their official site, then web_fetch.
+
+From the fetched content, extract concrete proposals:
+  - Venues: "I found a 'Restaurant Aurora' open 17:00–22:00 — add it?"
+  - Menu items: list 3-8 items with prices, ask "add these all? Or want to edit?"
+  - Spa hours, pool hours, etc.: "Their site says spa is 09:00–21:00 — confirm?"
+  - Knowledge: Wi-Fi, breakfast, parking, etc.
+
+ALWAYS show what you propose before mutating. Use bullet lists. Let the user say "yes / no / edit / skip".
+Don't invent prices or hours that aren't in the source. If something's not on the page, say so and move to manual Q&A for that item.
+
+## Step B — manual Q&A for whatever's still missing
+
+After the autofill pass (or if the user opts out of it):
 - ASK ONE THING. Wait for the answer. Confirm. Save it. Move on.
-- Group related questions together: e.g. "What's your pool hours? Anything else guests should know?"
-- After capturing each thing, say what you did and what's next: "✅ Saved your pool hours. Next: gym hours — what are they?"
+- Group related questions: e.g. "What's your pool hours? Anything else guests should know?"
+- After each save: "✅ Saved your pool hours. Next: gym hours — what are they?"
 - Skip what's already filled in. Don't re-ask.
 - At the end, summarize: "All done! You captured: pool hours, gym hours, spa treatments, and 3 menu items. Anything else?"
 - The user can bail out at any time ("skip", "that's enough", "I'll do this later") — respect it gracefully.
@@ -320,6 +341,37 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description:
+        "Search the web for information about the hotel. Use when the user gives a hotel name and you want to find their site, menu, hours, etc. Returns a list of {title, url, snippet}.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query, e.g. 'Grand Oslo Hotel restaurant menu hours'" },
+          maxResults: { type: "number", description: "Max results (default 8, max 10)" },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "web_fetch",
+      description:
+        "Fetch a web page and return its readable text + a list of useful internal links. Use this after web_search or when the user gives you a URL directly. Returns truncated to ~12k chars.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Full http(s) URL" },
+        },
+        required: ["url"],
+      },
+    },
+  },
 ];
 
 // ── Tool execution ────────────────────────────────────
@@ -417,6 +469,24 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
       const hotel = await prisma.hotel.update({ where: { id: hotelId }, data: updates });
       const { smtpPass: _smtpPass, smtpUser: _smtpUser, ...rest } = hotel as any;
       return { updated: true, hotel: rest };
+    }
+
+    case "web_search": {
+      try {
+        const results = await webSearch(args.query, Math.min(args.maxResults || 8, 10));
+        return { results };
+      } catch (err: any) {
+        return { error: err?.message || "Web search failed" };
+      }
+    }
+
+    case "web_fetch": {
+      try {
+        const result = await webFetch(args.url);
+        return result;
+      } catch (err: any) {
+        return { error: err?.message || "Web fetch failed" };
+      }
     }
 
     case "add_menu_items_bulk": {

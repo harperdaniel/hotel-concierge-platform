@@ -713,7 +713,7 @@ function buildOpeningMessage(hotel: Hotel): string {
     missingList = `${missing.slice(0, -1).join(', ')}, and ${missing[missing.length - 1]}`;
   }
 
-  return `${greeting}\n\nI took a look at your setup and noticed you haven't added **${missingList}** yet.\n\nWant me to walk you through it? Just say *"yes"* and I'll ask the right questions — or feel free to jump to the relevant tab and do it yourself. **I'm here either way.** 😊\n\n🎙️ You can also speak instead of type — Norwegian or English.`;
+  return `${greeting}\n\nI took a look at your setup and noticed you haven't added **${missingList}** yet.\n\nWant me to walk you through it? Just say *"yes"* and I can take a couple of paths:\n\n- 🌐 **Got a website?** Drop the URL and I'll pull menus, hours, and services from there — you just confirm or correct what I find. Way faster than typing.\n- ✍️ **No website handy?** I'll ask you the right questions one at a time.\n\nOr, jump to the relevant tab and do it yourself — **I'm here either way.** 😊\n\n🎙️ You can also speak instead of type — Norwegian or English.`;
 }
 
 function describeToolCall(tc: { name: string; args: any; result: any }): string {
