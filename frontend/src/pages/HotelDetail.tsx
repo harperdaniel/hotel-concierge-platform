@@ -352,8 +352,15 @@ function AIManagerPanel({ hotel, onClose, onDataChanged }: { hotel: Hotel; onClo
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
+  // Lock body scroll while the panel is open
+  useEffect(() => {
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = original; };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-50 flex justify-end overscroll-contain">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/40"
@@ -361,26 +368,29 @@ function AIManagerPanel({ hotel, onClose, onDataChanged }: { hotel: Hotel; onClo
         aria-hidden="true"
       />
 
-      {/* Panel: full-screen on mobile, side panel on desktop */}
-      <div className="relative bg-gray-50 w-full sm:w-[480px] lg:w-[560px] h-full shadow-2xl flex flex-col animate-slideInRight">
-        {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
-          <div className="flex items-center gap-2">
-            <Sparkles size={18} className="text-blue-600" />
-            <h3 className="font-semibold text-gray-900">AI Manager</h3>
-            <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded">{hotel.name}</span>
+      {/* Panel: full-screen on mobile, side panel on desktop. Use dvh for iOS URL bar. */}
+      <div
+        className="relative bg-gray-50 w-full sm:w-[480px] lg:w-[560px] shadow-2xl flex flex-col animate-slideInRight overflow-hidden"
+        style={{ height: '100dvh' }}
+      >
+        {/* Top bar (fixed) */}
+        <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b bg-white">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles size={18} className="text-blue-600 shrink-0" />
+            <h3 className="font-semibold text-gray-900 shrink-0">AI Manager</h3>
+            <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded truncate">{hotel.name}</span>
           </div>
           <button
             onClick={onClose}
-            className="p-2 -mr-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+            className="shrink-0 p-2 -mr-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
             aria-label="Close AI Manager"
           >
             <XCircle size={20} />
           </button>
         </div>
 
-        {/* Chat fills remaining space */}
-        <div className="flex-1 min-h-0 overflow-hidden">
+        {/* Chat fills the rest. min-h-0 is essential for flex-1 + scrollable child. */}
+        <div className="flex-1 min-h-0 flex flex-col">
           <ManagerChatTab hotel={hotel} onDataChanged={onDataChanged} fullHeight />
         </div>
       </div>
@@ -536,27 +546,27 @@ function ManagerChatTab({ hotel, onDataChanged, fullHeight = false }: { hotel: H
 
   return (
     <div
-      className={`flex flex-col bg-white overflow-hidden ${
-        fullHeight ? 'h-full border-0 rounded-none' : 'h-[calc(100vh-12rem)] min-h-[400px] border rounded-xl'
+      className={`flex flex-col bg-white min-h-0 ${
+        fullHeight ? 'flex-1 border-0 rounded-none' : 'h-[calc(100vh-12rem)] min-h-[400px] border rounded-xl overflow-hidden'
       }`}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
-        <div className="flex items-center gap-2">
-          <Sparkles size={18} className="text-blue-600" />
-          <h3 className="font-semibold text-gray-900">AI Manager</h3>
-          <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded">staff</span>
+      {/* Header (fixed) */}
+      <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b bg-gray-50">
+        <div className="flex items-center gap-2 min-w-0">
+          <Sparkles size={18} className="text-blue-600 shrink-0" />
+          <h3 className="font-semibold text-gray-900 shrink-0">AI Manager</h3>
+          <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded truncate">staff</span>
         </div>
         <button
           onClick={clearConversation}
-          className="text-xs text-gray-500 hover:text-gray-700"
+          className="shrink-0 text-xs text-gray-500 hover:text-gray-700"
         >
           Restart
         </button>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* Messages (only this area scrolls) */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3">
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
@@ -592,9 +602,9 @@ function ManagerChatTab({ hotel, onDataChanged, fullHeight = false }: { hotel: H
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Voice status / error */}
+      {/* Voice status / error (fixed above input) */}
       {(recording || interimTranscript || voiceError) && (
-        <div className="px-3 py-2 border-t bg-blue-50 text-xs text-blue-800 flex items-center gap-2">
+        <div className="shrink-0 px-3 py-2 border-t bg-blue-50 text-xs text-blue-800 flex items-center gap-2 flex-wrap">
           {recording && (
             <span className="flex items-center gap-1">
               <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
@@ -608,8 +618,12 @@ function ManagerChatTab({ hotel, onDataChanged, fullHeight = false }: { hotel: H
         </div>
       )}
 
-      {/* Input */}
-      <form onSubmit={handleSend} className="border-t p-3 flex gap-2 items-stretch">
+      {/* Input (fixed at bottom; safe-area padding for iOS home indicator) */}
+      <form
+        onSubmit={handleSend}
+        className="shrink-0 border-t p-3 flex gap-2 items-stretch bg-white"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <button
           type="button"
           onClick={() => {
@@ -2001,6 +2015,13 @@ function GuestDemoPanel({ hotel, onClose }: { hotel: Hotel; onClose: () => void 
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
+  // Lock body scroll while open
+  useEffect(() => {
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = original; };
+  }, []);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -2027,28 +2048,31 @@ function GuestDemoPanel({ hotel, onClose }: { hotel: Hotel; onClose: () => void 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-50 flex justify-end overscroll-contain">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
-      <div className="relative bg-gray-50 w-full sm:w-[480px] lg:w-[560px] h-full shadow-2xl flex flex-col animate-slideInRight">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
-          <div className="flex items-center gap-2">
-            <UserCircle size={18} className="text-emerald-600" />
-            <h3 className="font-semibold text-gray-900">Guest experience</h3>
-            <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded">DEMO</span>
+      <div
+        className="relative bg-gray-50 w-full sm:w-[480px] lg:w-[560px] shadow-2xl flex flex-col animate-slideInRight overflow-hidden"
+        style={{ height: '100dvh' }}
+      >
+        {/* Header (fixed) */}
+        <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b bg-white">
+          <div className="flex items-center gap-2 min-w-0">
+            <UserCircle size={18} className="text-emerald-600 shrink-0" />
+            <h3 className="font-semibold text-gray-900 shrink-0">Guest experience</h3>
+            <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded shrink-0">DEMO</span>
           </div>
-          <button onClick={onClose} className="p-2 -mr-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg" aria-label="Close demo">
+          <button onClick={onClose} className="shrink-0 p-2 -mr-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg" aria-label="Close demo">
             <XCircle size={20} />
           </button>
         </div>
 
-        {/* Demo banner */}
-        <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-200 text-xs text-emerald-800">
+        {/* Demo banner (fixed) */}
+        <div className="shrink-0 px-4 py-2 bg-emerald-50 border-b border-emerald-200 text-xs text-emerald-800">
           You're chatting as a guest of <strong>{hotel.name}</strong>. Bookings you make here are not real — this is just a preview of what your guests will experience.
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+        {/* Messages (only scroll area) */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3 bg-gray-50">
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -2076,8 +2100,12 @@ function GuestDemoPanel({ hotel, onClose }: { hotel: Hotel; onClose: () => void 
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
-        <form onSubmit={handleSend} className="border-t p-3 bg-white flex gap-2">
+        {/* Input (fixed at bottom, safe-area padding) */}
+        <form
+          onSubmit={handleSend}
+          className="shrink-0 border-t p-3 bg-white flex gap-2"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+        >
           <input
             type="text"
             value={input}
