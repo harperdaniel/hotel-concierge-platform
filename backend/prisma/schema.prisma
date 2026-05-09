@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Users / Hotel Staff ──────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("admin") // "admin" | "staff"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  hotels Hotel[]
+}
+
+// ── Hotels ────────────────────────────────────────────
+
+model Hotel {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  phone     String?
+  email     String?
+  website   String?
+  timezone  String   @default("Europe/Oslo")
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  knowledgeEntries   KnowledgeEntry[]
+  menuItems          MenuItem[]
+  services           Service[]
+  bookings           Booking[]
+  telegramBot        TelegramBot?
+  openclawConfig     OpenClawConfig?
+
+  @@map("hotels")
+}
+
+// ── Hotel Knowledge Base (free-text) ──────────────────
+
+model KnowledgeEntry {
+  id       String @id @default(cuid())
+  category String // "amenities" | "policies" | "local_area" | "general"
+  content  String
+
+  hotelId String
+  hotel   Hotel  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@map("knowledge_entries")
+}
+
+// ── Menu Items (for room service) ─────────────────────
+
+model MenuItem {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  price       Int     // price in cents/NOK øre to avoid float issues
+  category    String  // "mains" | "starters" | "desserts" | "drinks" | etc.
+  available   Boolean @default(true)
+
+  hotelId String
+  hotel   Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@map("menu_items")
+}
+
+// ── Hotel Services (spa, transfers, etc.) ─────────────
+
+model Service {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  durationMin Int?
+  price       Int?    // cents/NOK øre
+
+  hotelId String
+  hotel   Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@map("services")
+}
+
+// ── Bookings (table reservations & room service) ──────
+
+model Booking {
+  id            String   @id @default(cuid())
+  type          String   // "table" | "room_service"
+  guestName     String
+  guestRoom     String?
+  details       String   // e.g. "Table for 2, 20:00" or "Salmon, Sauvignon Blanc"
+  status        String   @default("pending") // "pending" | "confirmed" | "fulfilled" | "cancelled"
+  calendarEventId String? // Google Calendar event ID
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  hotelId String
+  hotel   Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@map("bookings")
+}
+
+// ── Telegram Bot Config ───────────────────────────────
+
+model TelegramBot {
+  id          String  @id @default(cuid())
+  botToken    String
+  botUsername String
+  webhookUrl  String?
+  active      Boolean @default(true)
+
+  hotelId String @unique
+  hotel   Hotel  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@map("telegram_bots")
+}
+
+// ── OpenClaw Agent Config ─────────────────────────────
+
+model OpenClawConfig {
+  id            String  @id @default(cuid())
+  agentId       String
+  workspacePath String
+  soulContent  String? // The SOUL.md content for this hotel's agent
+  active        Boolean @default(true)
+
+  hotelId String @unique
+  hotel   Hotel  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  @@map("openclaw_configs")
+}

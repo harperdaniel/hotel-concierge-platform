@@ -1,0 +1,19 @@
+# Docker Compose is optional for local dev — PostgreSQL runs via Homebrew.
+# Uncomment and run `docker compose up -d` if you prefer containerized PG.
+#
+# services:
+#   postgres:
+#     image: postgres:16-alpine
+#     container_name: concierge-db
+#     restart: unless-stopped
+#     ports:
+#       - "5432:5432"
+#     environment:
+#       POSTGRES_USER: concierge
+#       POSTGRES_PASSWORD: concierge_dev
+#       POSTGRES_DB: hotel_concierge
+#     volumes:
+#       - pgdata:/var/lib/postgresql/data
+#
+# volumes:
+#   pgdata:
