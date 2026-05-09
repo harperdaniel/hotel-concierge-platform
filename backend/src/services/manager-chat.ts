@@ -38,6 +38,13 @@ Don't pester — ask once per topic per conversation.
 
 If the user mentions a venue you don't yet have ("the sky bar", "our breakfast cafe"), call list_venues first; if it doesn't exist, propose creating it before adding items to it.
 
+# Efficiency rules
+
+- Call get_hotel_state at MOST once per turn. After that, you already know the state — don't re-check it after every save.
+- When researching online, prefer ONE list_venues + ONE web_fetch + ONE bulk-add over many small calls.
+- Don't re-search the same query twice in a turn.
+- Confirm-then-batch: when proposing 5 menu items, save them all with add_menu_items_bulk in ONE tool call, not five.
+
 # Walkthrough mode
 
 When the user agrees to be walked through their setup ("yes", "sure", "walk me through it", "help me set this up"):
@@ -600,9 +607,22 @@ export async function managerChat(
   ];
 
   const toolCallsLog: { name: string; args: any; result: any }[] = [];
-  const MAX_ITERATIONS = 6; // safety against tool-call loops
+  const MAX_ITERATIONS = 20; // generous — web research can chain many fetches
+  const SOFT_BUDGET_MS = 90_000; // 90s wall-clock budget per turn
+  const startedAt = Date.now();
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
+    if (Date.now() - startedAt > SOFT_BUDGET_MS) {
+      // Soft-stop: ask the model to wrap up rather than just dying
+      messages.push({
+        role: "system",
+        content:
+          "You're approaching the time budget for this turn. Stop calling tools and write a concise summary of what you accomplished and what to do next. Do not call any more tools.",
+      });
+      const wrap = await client.chat.completions.create({ model: MODEL, messages, tool_choice: "none" });
+      const wrapMsg = wrap.choices[0]?.message?.content || "I had to stop early to keep things responsive. Want me to continue from where I left off?";
+      return { reply: wrapMsg.trim(), toolCalls: toolCallsLog };
+    }
     const completion = await client.chat.completions.create({
       model: MODEL,
       messages,
@@ -644,8 +664,37 @@ export async function managerChat(
     }
   }
 
+  // Hit MAX_ITERATIONS without a final reply. Force a wrap-up summary so the
+  // user isn't left with a generic 'stuck' message. Pass the tool log to the
+  // model so it can describe what it accomplished.
+  try {
+    messages.push({
+      role: "system",
+      content:
+        "You've reached the maximum number of tool calls for this turn. Stop calling tools. Briefly summarize what you accomplished and what's left, and ask the user if they want you to continue. Do not call any more tools.",
+    });
+    const wrap = await client.chat.completions.create({ model: MODEL, messages, tool_choice: "none" });
+    const wrapMsg = wrap.choices[0]?.message?.content;
+    if (wrapMsg && wrapMsg.trim()) {
+      return { reply: wrapMsg.trim(), toolCalls: toolCallsLog };
+    }
+  } catch (e) {
+    // fall through
+  }
+
+  // Last-resort fallback with a friendlier message
+  const summary = summarizeToolLog(toolCallsLog);
   return {
-    reply: "I got stuck in a loop while working on that — please try rephrasing or breaking it into smaller steps.",
+    reply: `I got partway through that and ran out of steps. Here's what I did:\n\n${summary}\n\nWant me to continue?`,
     toolCalls: toolCallsLog,
   };
+}
+
+function summarizeToolLog(log: { name: string; args: any; result: any }[]): string {
+  if (log.length === 0) return "_(no actions completed)_";
+  const counts: Record<string, number> = {};
+  for (const t of log) counts[t.name] = (counts[t.name] || 0) + 1;
+  return Object.entries(counts)
+    .map(([n, c]) => `- ${c} × \`${n}\``)
+    .join("\n");
 }
