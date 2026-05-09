@@ -105,30 +105,44 @@ export default function HotelDetail() {
         <Link to="/dashboard" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
           <ArrowLeft size={16} /> Back to hotels
         </Link>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
+        <div className="mt-2 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3">
           <h1 className="text-2xl font-bold text-gray-900">{hotel.name}</h1>
-          <button
-            onClick={() => setAiOpen(true)}
-            className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:from-blue-700 hover:to-purple-700 shadow-sm"
-          >
-            <Sparkles size={14} /> AI Manager
-          </button>
-          <button
-            onClick={() => setGuestOpen(true)}
-            className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:from-emerald-600 hover:to-teal-700 shadow-sm"
-          >
-            <UserCircle size={14} /> Try as a guest
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setAiOpen(true)}
+              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:from-blue-700 hover:to-purple-700 shadow-sm"
+            >
+              <Sparkles size={14} /> AI Manager
+            </button>
+            <button
+              onClick={() => setGuestOpen(true)}
+              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:from-emerald-600 hover:to-teal-700 shadow-sm"
+            >
+              <UserCircle size={14} /> Try as a guest
+            </button>
+          </div>
         </div>
         {justCreated && (
           <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
-            🎉 Hotel created! Next: head to <strong>Bot Setup</strong> and click “Provision Agent” to spin up your concierge — then click the <strong>AI Manager</strong> button up top to fill in details by chatting.
+            🎉 Hotel created and your concierge is live! Tap <strong>AI Manager</strong> to fill in details, or <strong>Try as a guest</strong> to see how guests will experience it.
           </div>
         )}
       </div>
 
-      {/* Tabs (horizontal scroll on mobile) */}
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg overflow-x-auto -mx-1 px-1">
+      {/* Tabs: dropdown on mobile, segmented row on desktop */}
+      <div className="sm:hidden mb-6">
+        <label className="block text-xs font-medium text-gray-500 mb-1">Section</label>
+        <select
+          value={activeTab}
+          onChange={(e) => setActiveTab(e.target.value as any)}
+          className="w-full px-3 py-2.5 border rounded-lg bg-white text-base font-medium text-gray-900"
+        >
+          {tabs.map((tab) => (
+            <option key={tab.key} value={tab.key}>{tab.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="hidden sm:flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.key}
@@ -539,7 +553,7 @@ function ManagerChatTab({ hotel, onDataChanged, fullHeight = false }: { hotel: H
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-sm text-amber-800">
         <p className="font-semibold mb-1">Chat unavailable</p>
         <p>{tokenError}</p>
-        <p className="mt-2">Go to <strong>Bot Setup</strong> and click “Provision Agent” to enable the AI chat.</p>
+        <p className="mt-2">The agent should auto-provision automatically. Try refreshing the page — if this persists, the Bot Setup tab has a “Provision now” button.</p>
       </div>
     );
   }
@@ -864,8 +878,8 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
               <CheckCircle size={16} /> Provisioned
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-sm text-gray-400">
-              <XCircle size={16} /> Not provisioned
+            <span className="flex items-center gap-1 text-sm text-gray-500">
+              <Loader size={14} className="animate-spin" /> Auto-provisioning…
             </span>
           )}
         </div>
@@ -878,17 +892,28 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
             >
               {loading ? <Loader size={16} className="animate-spin" /> : <Rocket size={16} />}
-              {loading ? 'Provisioning...' : 'Provision Agent'}
+              {loading ? 'Provisioning...' : 'Provision now'}
             </button>
           ) : (
-            <button
-              onClick={handleDeprovision}
-              disabled={loading}
-              className="flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg hover:bg-red-100 disabled:opacity-50 text-sm font-medium"
-            >
-              <Trash2 size={16} />
-              Deprovision
-            </button>
+            <>
+              <button
+                onClick={handleProvision}
+                disabled={loading}
+                className="flex items-center gap-2 bg-gray-100 border text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
+                title="Refresh the agent's workspace from the latest hotel data"
+              >
+                {loading ? <Loader size={16} className="animate-spin" /> : <Rocket size={16} />}
+                Re-provision
+              </button>
+              <button
+                onClick={handleDeprovision}
+                disabled={loading}
+                className="flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg hover:bg-red-100 disabled:opacity-50 text-sm font-medium"
+              >
+                <Trash2 size={16} />
+                Deprovision
+              </button>
+            </>
           )}
         </div>
       </div>
