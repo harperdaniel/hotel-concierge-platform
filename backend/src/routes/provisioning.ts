@@ -19,6 +19,7 @@ router.post("/:id/provision", async (req, res) => {
       agentId: result.agentId,
       workspacePath: result.workspacePath,
       telegramDeepLink: result.telegramDeepLink,
+      managerDeepLink: result.managerDeepLink,
     });
   } catch (err: any) {
     console.error("Provisioning failed:", err);
