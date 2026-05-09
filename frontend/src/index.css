@@ -22,3 +22,12 @@
 .chat-md th { background: rgba(0,0,0,0.04); font-weight: 600; }
 .chat-md hr { border: none; border-top: 1px solid #e5e7eb; margin: 0.5rem 0; }
 .chat-md blockquote { border-left: 3px solid #d1d5db; padding-left: 0.6rem; margin: 0.5rem 0; color: #4b5563; }
+
+/* AI Manager slide-in panel */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-slideInRight {
+  animation: slideInRight 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}

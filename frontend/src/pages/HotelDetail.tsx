@@ -12,9 +12,10 @@ export default function HotelDetail() {
   const [hotel, setHotel] = useState<Hotel | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'info' | 'facilities' | 'knowledge' | 'menu' | 'services' | 'spa' | 'bots' | 'chat'>(
+  const [activeTab, setActiveTab] = useState<'info' | 'facilities' | 'knowledge' | 'menu' | 'services' | 'spa' | 'bots'>(
     searchParams.get('welcome') === '1' ? 'bots' : 'facilities'
   );
+  const [aiOpen, setAiOpen] = useState(false);
   const justCreated = searchParams.get('welcome') === '1';
 
   // Form state
@@ -89,7 +90,6 @@ export default function HotelDetail() {
 
   const tabs = [
     { key: 'facilities', label: 'Overview', icon: Building2 },
-    { key: 'chat', label: 'AI Manager', icon: Sparkles },
     { key: 'menu', label: 'Restaurants', icon: Utensils },
     { key: 'spa', label: 'Spa', icon: Waves },
     { key: 'services', label: 'Services', icon: ConciergeBell },
@@ -104,10 +104,18 @@ export default function HotelDetail() {
         <Link to="/dashboard" className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
           <ArrowLeft size={16} /> Back to hotels
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 mt-2">{hotel.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-bold text-gray-900">{hotel.name}</h1>
+          <button
+            onClick={() => setAiOpen(true)}
+            className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:from-blue-700 hover:to-purple-700 shadow-sm"
+          >
+            <Sparkles size={14} /> AI Manager
+          </button>
+        </div>
         {justCreated && (
           <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
-            🎉 Hotel created! Next: head to <strong>Bot Setup</strong> and click “Provision Agent” to spin up your concierge — then jump to <strong>AI Chat</strong> to fill in details by chatting.
+            🎉 Hotel created! Next: head to <strong>Bot Setup</strong> and click “Provision Agent” to spin up your concierge — then click the <strong>AI Manager</strong> button up top to fill in details by chatting.
           </div>
         )}
       </div>
@@ -227,9 +235,6 @@ export default function HotelDetail() {
         </div>
       )}
 
-      {/* Tab: AI Chat */}
-      {activeTab === 'chat' && <ManagerChatTab hotel={hotel} onDataChanged={loadHotel} />}
-
       {/* Tab: Spa (filtered services) */}
       {activeTab === 'spa' && <SpaTab hotel={hotel} />}
 
@@ -238,6 +243,18 @@ export default function HotelDetail() {
 
       {/* Tab: Bot Setup */}
       {activeTab === 'bots' && <BotSetupTab hotel={hotel} />}
+
+      {/* AI Manager floating button (mobile) */}
+      <button
+        onClick={() => setAiOpen(true)}
+        className="sm:hidden fixed bottom-4 right-4 z-30 w-14 h-14 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg flex items-center justify-center"
+        aria-label="Open AI Manager"
+      >
+        <Sparkles size={22} />
+      </button>
+
+      {/* AI Manager overlay panel */}
+      {aiOpen && <AIManagerPanel hotel={hotel} onClose={() => setAiOpen(false)} onDataChanged={loadHotel} />}
     </Layout>
   );
 }
@@ -315,9 +332,55 @@ function SpaTab({ hotel }: { hotel: Hotel }) {
   );
 }
 
+// ── AI Manager Panel (slide-in overlay around the chat tab) ───────
+
+function AIManagerPanel({ hotel, onClose, onDataChanged }: { hotel: Hotel; onClose: () => void; onDataChanged: () => void }) {
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Panel: full-screen on mobile, side panel on desktop */}
+      <div className="relative bg-gray-50 w-full sm:w-[480px] lg:w-[560px] h-full shadow-2xl flex flex-col animate-slideInRight">
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
+          <div className="flex items-center gap-2">
+            <Sparkles size={18} className="text-blue-600" />
+            <h3 className="font-semibold text-gray-900">AI Manager</h3>
+            <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded">{hotel.name}</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 -mr-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
+            aria-label="Close AI Manager"
+          >
+            <XCircle size={20} />
+          </button>
+        </div>
+
+        {/* Chat fills remaining space */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <ManagerChatTab hotel={hotel} onDataChanged={onDataChanged} fullHeight />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Manager Chat Tab ─────────────────────────────────────────
 
-function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged: () => void }) {
+function ManagerChatTab({ hotel, onDataChanged, fullHeight = false }: { hotel: Hotel; onDataChanged: () => void; fullHeight?: boolean }) {
   const [staffToken, setStaffToken] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([
@@ -462,7 +525,11 @@ function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged:
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] min-h-[400px] bg-white border rounded-xl overflow-hidden">
+    <div
+      className={`flex flex-col bg-white overflow-hidden ${
+        fullHeight ? 'h-full border-0 rounded-none' : 'h-[calc(100vh-12rem)] min-h-[400px] border rounded-xl'
+      }`}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
         <div className="flex items-center gap-2">
