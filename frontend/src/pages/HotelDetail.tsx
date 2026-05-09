@@ -3,7 +3,7 @@ import { useParams, Link, useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Layout from '../components/Layout';
-import { getHotel, updateHotel, createKnowledge, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, listVenues, createVenue, addVenueMenuItem, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus, type ChatMsg, type Venue } from '../lib/api';
+import { getHotel, updateHotel, createKnowledge, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, listVenues, createVenue, addVenueMenuItem, createService, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus, type ChatMsg, type Venue } from '../lib/api';
 import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves, Building2, Wine, Dumbbell, Briefcase, Plane, Dog, BedDouble, Coffee, ChefHat, UserCircle } from 'lucide-react';
 
 export default function HotelDetail() {
@@ -235,29 +235,10 @@ export default function HotelDetail() {
       {activeTab === 'menu' && <RestaurantsTab hotel={hotel} onChanged={loadHotel} />}
 
       {/* Tab: Services */}
-      {activeTab === 'services' && (
-        <div className="space-y-3">
-          {hotel.services?.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">No services configured yet.</p>
-          ) : (
-            hotel.services?.map((service: Service) => (
-              <div key={service.id} className="bg-white rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-gray-900">{service.name}</p>
-                  {service.description && <p className="text-sm text-gray-500">{service.description}</p>}
-                </div>
-                <div className="sm:text-right shrink-0">
-                  {service.price && <p className="font-semibold">{(service.price / 100).toFixed(2)} NOK</p>}
-                  {service.durationMin && <p className="text-xs text-gray-400">{service.durationMin} min</p>}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+      {activeTab === 'services' && <ServicesTab hotel={hotel} onChanged={loadHotel} />}
 
       {/* Tab: Spa (filtered services) */}
-      {activeTab === 'spa' && <SpaTab hotel={hotel} />}
+      {activeTab === 'spa' && <SpaTab hotel={hotel} onChanged={loadHotel} />}
 
       {/* Tab: Facilities (overview dashboard) */}
       {activeTab === 'facilities' && <FacilitiesTab hotel={hotel} onChanged={loadHotel} onJumpTab={(t) => setActiveTab(t as any)} />}
@@ -285,74 +266,209 @@ export default function HotelDetail() {
 
 // ── Spa Tab ───────────────────────────────────────────────────
 
-function SpaTab({ hotel }: { hotel: Hotel }) {
-  const treatments = (hotel.services || []).filter((s: any) => s.category === 'spa_treatment');
-  const accesses = (hotel.services || []).filter((s: any) => s.category === 'spa_access');
+function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
+  const treatments = (hotel.services || []).filter((sv: any) => sv.category === "spa_treatment");
+  const accesses = (hotel.services || []).filter((sv: any) => sv.category === "spa_access");
   const hasSpa = (hotel as any).hasSpa === true;
-
-  if (!hasSpa && treatments.length === 0 && accesses.length === 0) {
-    return (
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-sm text-amber-800">
-        <p className="font-semibold mb-1">No spa configured</p>
-        <p>This hotel doesn't have a spa marked in its facilities. Use the AI Chat tab and say something like “we have a spa, add a 60-min massage for 890 kr”, or update the hotel info to mark it as having a spa.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-3">
         <Waves size={28} className="text-blue-600 mt-1" />
-        <div>
+        <div className="flex-1">
           <h3 className="text-lg font-semibold text-gray-900">Spa</h3>
           <p className="text-sm text-gray-500">
-            Treatments and access passes guests can book through the concierge. Use the AI Chat tab to add new ones.
+            Treatments and access passes guests can book through the concierge.
           </p>
         </div>
       </div>
 
+      {!hasSpa && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+          This hotel isn't marked as having a spa. Add an item below or enable Spa from Overview to surface spa info to guests.
+        </div>
+      )}
+
       {/* Treatments */}
-      <section className="space-y-2">
+      <section className="space-y-3">
         <h4 className="text-sm font-semibold text-gray-700">Treatments ({treatments.length})</h4>
-        {treatments.length === 0 ? (
-          <p className="text-sm text-gray-400 italic">No treatments yet — try “Add a 60-min hot stone massage for 890 kr” in the AI Chat.</p>
-        ) : (
-          treatments.map((t: any) => (
-            <div key={t.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-gray-900">{t.name}</p>
-                {t.description && <p className="text-sm text-gray-500">{t.description}</p>}
-              </div>
-              <div className="sm:text-right shrink-0">
-                {t.price && <p className="font-semibold">{(t.price / 100).toFixed(2)} NOK</p>}
-                {t.durationMin && <p className="text-xs text-gray-400">{t.durationMin} min</p>}
-              </div>
+        {treatments.map((t: any) => (
+          <div key={t.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-gray-900">{t.name}</p>
+              {t.description && <p className="text-sm text-gray-500">{t.description}</p>}
             </div>
-          ))
-        )}
+            <div className="sm:text-right shrink-0">
+              {t.price && <p className="font-semibold">{(t.price / 100).toFixed(2)} NOK</p>}
+              {t.durationMin && <p className="text-xs text-gray-400">{t.durationMin} min</p>}
+            </div>
+          </div>
+        ))}
+        <ServiceQuickAdd
+          hotelId={hotel.id}
+          fixedCategory="spa_treatment"
+          placeholder="e.g. Hot stone massage"
+          onSaved={onChanged}
+        />
       </section>
 
       {/* Access passes */}
-      <section className="space-y-2">
+      <section className="space-y-3">
         <h4 className="text-sm font-semibold text-gray-700">Access ({accesses.length})</h4>
-        {accesses.length === 0 ? (
-          <p className="text-sm text-gray-400 italic">No access passes yet — try “Add a sauna day pass for 250 kr”.</p>
-        ) : (
-          accesses.map((a: any) => (
-            <div key={a.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-gray-900">{a.name}</p>
-                {a.description && <p className="text-sm text-gray-500">{a.description}</p>}
-              </div>
-              <div className="sm:text-right shrink-0">
-                {a.price && <p className="font-semibold">{(a.price / 100).toFixed(2)} NOK</p>}
-                {a.durationMin && <p className="text-xs text-gray-400">{a.durationMin} min</p>}
-              </div>
+        {accesses.map((a: any) => (
+          <div key={a.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-gray-900">{a.name}</p>
+              {a.description && <p className="text-sm text-gray-500">{a.description}</p>}
             </div>
-          ))
-        )}
+            <div className="sm:text-right shrink-0">
+              {a.price && <p className="font-semibold">{(a.price / 100).toFixed(2)} NOK</p>}
+              {a.durationMin && <p className="text-xs text-gray-400">{a.durationMin} min</p>}
+            </div>
+          </div>
+        ))}
+        <ServiceQuickAdd
+          hotelId={hotel.id}
+          fixedCategory="spa_access"
+          placeholder="e.g. Sauna day pass"
+          onSaved={onChanged}
+        />
       </section>
     </div>
+  );
+}
+
+// ── Services Tab (transfers, activities, general) ─────────────
+
+function ServicesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
+  const services = (hotel.services || []).filter(
+    (sv: any) => sv.category !== "spa_treatment" && sv.category !== "spa_access"
+  );
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900">Services</h3>
+        <p className="text-sm text-gray-500">Transfers, activities, and other guest services bookable through the concierge.</p>
+      </div>
+
+      {services.length === 0 ? (
+        <p className="text-gray-400 text-center py-4 text-sm">No services yet — add one below.</p>
+      ) : (
+        <div className="space-y-2">
+          {services.map((sv: any) => (
+            <div key={sv.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded text-gray-600">{sv.category || "general"}</span>
+                <span className="ml-2 font-medium text-gray-900">{sv.name}</span>
+                {sv.description && <p className="text-sm text-gray-500 mt-1">{sv.description}</p>}
+              </div>
+              <div className="sm:text-right shrink-0">
+                {sv.price && <p className="font-semibold">{(sv.price / 100).toFixed(2)} NOK</p>}
+                {sv.durationMin && <p className="text-xs text-gray-400">{sv.durationMin} min</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ServiceQuickAdd
+        hotelId={hotel.id}
+        showCategoryPicker
+        defaultCategory="general"
+        placeholder="e.g. Airport transfer"
+        onSaved={onChanged}
+      />
+    </div>
+  );
+}
+
+// ── Service quick-add (shared by Spa and Services tabs) ───────
+
+function ServiceQuickAdd({
+  hotelId,
+  fixedCategory,
+  showCategoryPicker = false,
+  defaultCategory,
+  placeholder,
+  onSaved,
+}: {
+  hotelId: string;
+  fixedCategory?: "spa_treatment" | "spa_access" | "transfer" | "activity" | "general";
+  showCategoryPicker?: boolean;
+  defaultCategory?: "spa_treatment" | "spa_access" | "transfer" | "activity" | "general";
+  placeholder?: string;
+  onSaved?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [duration, setDuration] = useState("");
+  const [price, setPrice] = useState("");
+  const [category, setCategory] = useState<string>(fixedCategory || defaultCategory || "general");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await createService(hotelId, {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        durationMin: duration ? parseInt(duration, 10) : undefined,
+        price: price ? Math.round(parseFloat(price) * 100) : undefined,
+        category: (fixedCategory || category) as any,
+      });
+      setName(""); setDescription(""); setDuration(""); setPrice("");
+      setOpen(false);
+      onSaved?.();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || "Failed to add");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1 text-sm text-blue-600 hover:underline"
+      >
+        <Plus size={14} /> Add manually
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="bg-white border rounded-xl p-4 space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder || "Name"} className="px-3 py-2 border rounded-lg text-sm sm:col-span-2" />
+        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" className="px-3 py-2 border rounded-lg text-sm sm:col-span-2" />
+        <input type="number" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="Duration (min)" className="px-3 py-2 border rounded-lg text-sm" />
+        <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price (NOK)" step="0.01" className="px-3 py-2 border rounded-lg text-sm" />
+        {showCategoryPicker && (
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="px-3 py-2 border rounded-lg text-sm sm:col-span-2">
+            <option value="transfer">Transfer</option>
+            <option value="activity">Activity</option>
+            <option value="general">General</option>
+            <option value="spa_treatment">Spa treatment</option>
+            <option value="spa_access">Spa access</option>
+          </select>
+        )}
+      </div>
+      {error && <div className="text-xs text-red-600">{error}</div>}
+      <div className="flex gap-2">
+        <button type="submit" disabled={saving || !name.trim()} className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+          {saving ? <Loader size={14} className="animate-spin" /> : <Plus size={14} />} Add
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
