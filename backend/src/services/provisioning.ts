@@ -270,6 +270,6 @@ export async function getProvisioningStatus(hotelId: string) {
       username: bot.botUsername,
       deepLink: bot.webhookUrl,
     } : null,
-    updatedAt: config?.updatedAt ?? null,
+    updatedAt: (config as any)?.updatedAt ?? null,
   };
 }
