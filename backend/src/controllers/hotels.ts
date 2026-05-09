@@ -46,9 +46,35 @@ export async function getHotel(req: Request, res: Response): Promise<void> {
 }
 
 export async function createHotel(req: Request, res: Response): Promise<void> {
+  const { initialKnowledge, ...hotelData } = req.body || {};
+
   const hotel = await prisma.hotel.create({
-    data: { ...req.body, userId: req.user!.userId },
+    data: { ...hotelData, userId: req.user!.userId },
   });
+
+  // Seed knowledge entries based on facility flags so the concierge has
+  // sensible answers from day one. Each flag becomes a short knowledge note.
+  const facilityNotes: { category: string; content: string }[] = [];
+  if (hotelData.hasRestaurant) facilityNotes.push({ category: "amenities", content: `${hotel.name} has an in-house restaurant where guests can dine.` });
+  if (hotelData.hasRoomService) facilityNotes.push({ category: "amenities", content: `Room service / in-room dining is available at ${hotel.name}.` });
+  if (hotelData.hasSpa) facilityNotes.push({ category: "amenities", content: `${hotel.name} has a spa with treatments available for booking.` });
+  if (hotelData.hasPool) facilityNotes.push({ category: "amenities", content: `There is a pool / wellness area at ${hotel.name}.` });
+  if (hotelData.hasGym) facilityNotes.push({ category: "amenities", content: `A gym is available for guests at ${hotel.name}.` });
+  if (hotelData.hasBar) facilityNotes.push({ category: "amenities", content: `${hotel.name} has a bar / lounge area.` });
+  if (hotelData.hasConference) facilityNotes.push({ category: "amenities", content: `${hotel.name} has conference / meeting rooms available.` });
+  if (hotelData.hasTransfers) facilityNotes.push({ category: "amenities", content: `Airport transfers can be arranged through the concierge.` });
+  if (hotelData.petFriendly) facilityNotes.push({ category: "policies", content: `${hotel.name} is pet-friendly.` });
+
+  // Free-text knowledge from the wizard's last step
+  if (initialKnowledge && typeof initialKnowledge === "string" && initialKnowledge.trim()) {
+    facilityNotes.push({ category: "general", content: initialKnowledge.trim() });
+  }
+
+  if (facilityNotes.length > 0) {
+    await prisma.knowledgeEntry.createMany({
+      data: facilityNotes.map(n => ({ ...n, hotelId: hotel.id })),
+    });
+  }
 
   res.status(201).json({ hotel: sanitizeHotel(hotel) });
 }

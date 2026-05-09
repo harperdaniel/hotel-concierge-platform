@@ -168,11 +168,12 @@ router.post("/menu-items/bulk", async (req: any, res) => {
 // ── Add a service ─────────────────────────────────────
 
 router.post("/services", async (req: any, res) => {
-  const { name, description, durationMin, price } = req.body || {};
+  const { name, description, durationMin, price, category } = req.body || {};
   if (!name || typeof name !== "string") {
     res.status(400).json({ error: "name is required" });
     return;
   }
+  const validCategories = ["spa_treatment", "spa_access", "transfer", "activity", "general"];
   const service = await prisma.service.create({
     data: {
       hotelId: req.hotel.id,
@@ -180,6 +181,7 @@ router.post("/services", async (req: any, res) => {
       description: description ?? null,
       durationMin: typeof durationMin === "number" ? Math.round(durationMin) : null,
       price: typeof price === "number" ? Math.round(price) : null,
+      category: validCategories.includes(category) ? category : "general",
     },
   });
   res.status(201).json({ service });

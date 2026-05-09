@@ -56,6 +56,16 @@ export interface Hotel {
   smtpFromName?: string | null;
   smtpFromEmail?: string | null;
   // smtpPass intentionally NOT in the type — never returned to the client
+  // Facility flags (set during onboarding wizard)
+  hasRestaurant?: boolean;
+  hasRoomService?: boolean;
+  hasSpa?: boolean;
+  hasPool?: boolean;
+  hasGym?: boolean;
+  hasBar?: boolean;
+  hasConference?: boolean;
+  hasTransfers?: boolean;
+  petFriendly?: boolean;
   _count?: { menuItems: number; services: number; knowledgeEntries: number; bookings: number };
   knowledgeEntries?: KnowledgeEntry[];
   menuItems?: MenuItem[];
@@ -85,6 +95,7 @@ export interface Service {
   description: string | null;
   durationMin: number | null;
   price: number | null;
+  category?: 'spa_treatment' | 'spa_access' | 'transfer' | 'activity' | 'general' | string;
 }
 
 export interface Booking {

@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { getHotel, updateHotel, createKnowledge, createMenuItem, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus, type ChatMsg } from '../lib/api';
-import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves } from 'lucide-react';
 
 export default function HotelDetail() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const [hotel, setHotel] = useState<Hotel | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'info' | 'knowledge' | 'menu' | 'services' | 'bots' | 'chat'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'knowledge' | 'menu' | 'services' | 'spa' | 'bots' | 'chat'>(
+    searchParams.get('welcome') === '1' ? 'bots' : 'info'
+  );
+  const justCreated = searchParams.get('welcome') === '1';
 
   // Form state
   const [name, setName] = useState('');
@@ -100,6 +104,7 @@ export default function HotelDetail() {
     { key: 'knowledge', label: 'Knowledge', icon: BookOpen },
     { key: 'menu', label: 'Menu', icon: Utensils },
     { key: 'services', label: 'Services', icon: ConciergeBell },
+    { key: 'spa', label: 'Spa', icon: Waves },
     { key: 'bots', label: 'Bot Setup', icon: Bot },
   ] as const;
 
@@ -110,6 +115,11 @@ export default function HotelDetail() {
           <ArrowLeft size={16} /> Back to hotels
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 mt-2">{hotel.name}</h1>
+        {justCreated && (
+          <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+            🎉 Hotel created! Next: head to <strong>Bot Setup</strong> and click “Provision Agent” to spin up your concierge — then jump to <strong>AI Chat</strong> to fill in details by chatting.
+          </div>
+        )}
       </div>
 
       {/* Tabs (horizontal scroll on mobile) */}
@@ -287,9 +297,85 @@ export default function HotelDetail() {
       {/* Tab: AI Chat */}
       {activeTab === 'chat' && <ManagerChatTab hotel={hotel} onDataChanged={loadHotel} />}
 
+      {/* Tab: Spa (filtered services) */}
+      {activeTab === 'spa' && <SpaTab hotel={hotel} />}
+
       {/* Tab: Bot Setup */}
       {activeTab === 'bots' && <BotSetupTab hotel={hotel} />}
     </Layout>
+  );
+}
+
+// ── Spa Tab ───────────────────────────────────────────────────
+
+function SpaTab({ hotel }: { hotel: Hotel }) {
+  const treatments = (hotel.services || []).filter((s: any) => s.category === 'spa_treatment');
+  const accesses = (hotel.services || []).filter((s: any) => s.category === 'spa_access');
+  const hasSpa = (hotel as any).hasSpa === true;
+
+  if (!hasSpa && treatments.length === 0 && accesses.length === 0) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-sm text-amber-800">
+        <p className="font-semibold mb-1">No spa configured</p>
+        <p>This hotel doesn't have a spa marked in its facilities. Use the AI Chat tab and say something like “we have a spa, add a 60-min massage for 890 kr”, or update the hotel info to mark it as having a spa.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start gap-3">
+        <Waves size={28} className="text-blue-600 mt-1" />
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Spa</h3>
+          <p className="text-sm text-gray-500">
+            Treatments and access passes guests can book through the concierge. Use the AI Chat tab to add new ones.
+          </p>
+        </div>
+      </div>
+
+      {/* Treatments */}
+      <section className="space-y-2">
+        <h4 className="text-sm font-semibold text-gray-700">Treatments ({treatments.length})</h4>
+        {treatments.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">No treatments yet — try “Add a 60-min hot stone massage for 890 kr” in the AI Chat.</p>
+        ) : (
+          treatments.map((t: any) => (
+            <div key={t.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-gray-900">{t.name}</p>
+                {t.description && <p className="text-sm text-gray-500">{t.description}</p>}
+              </div>
+              <div className="sm:text-right shrink-0">
+                {t.price && <p className="font-semibold">{(t.price / 100).toFixed(2)} NOK</p>}
+                {t.durationMin && <p className="text-xs text-gray-400">{t.durationMin} min</p>}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      {/* Access passes */}
+      <section className="space-y-2">
+        <h4 className="text-sm font-semibold text-gray-700">Access ({accesses.length})</h4>
+        {accesses.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">No access passes yet — try “Add a sauna day pass for 250 kr”.</p>
+        ) : (
+          accesses.map((a: any) => (
+            <div key={a.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-gray-900">{a.name}</p>
+                {a.description && <p className="text-sm text-gray-500">{a.description}</p>}
+              </div>
+              <div className="sm:text-right shrink-0">
+                {a.price && <p className="font-semibold">{(a.price / 100).toFixed(2)} NOK</p>}
+                {a.durationMin && <p className="text-xs text-gray-400">{a.durationMin} min</p>}
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+    </div>
   );
 }
 

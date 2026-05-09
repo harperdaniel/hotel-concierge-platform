@@ -43,6 +43,17 @@ model Hotel {
   smtpFromName String?
   smtpFromEmail String?
 
+  // Facility flags captured during onboarding wizard
+  hasRestaurant   Boolean @default(false)
+  hasRoomService  Boolean @default(false)
+  hasSpa          Boolean @default(false)
+  hasPool         Boolean @default(false)
+  hasGym          Boolean @default(false)
+  hasBar          Boolean @default(false)
+  hasConference   Boolean @default(false)
+  hasTransfers    Boolean @default(false)
+  petFriendly     Boolean @default(false)
+
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -93,6 +104,9 @@ model Service {
   description String?
   durationMin Int?
   price       Int?    // cents/NOK øre
+  // Category groups services for the dashboard:
+  //   "spa_treatment" | "spa_access" | "transfer" | "activity" | "general"
+  category    String  @default("general")
 
   hotelId String
   hotel   Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)

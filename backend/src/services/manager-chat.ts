@@ -99,7 +99,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "add_service",
-      description: "Add a service (spa, transfer, etc.). Price in øre.",
+      description: "Add a service (spa treatment, spa access, transfer, activity, etc.). Price in øre.",
       parameters: {
         type: "object",
         properties: {
@@ -107,6 +107,11 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           description: { type: "string" },
           durationMin: { type: "number", description: "Duration in minutes" },
           price: { type: "number", description: "Price in øre (e.g. 89000 = 890 NOK)" },
+          category: {
+            type: "string",
+            enum: ["spa_treatment", "spa_access", "transfer", "activity", "general"],
+            description: "What kind of service this is. Use 'spa_treatment' for massages/facials/etc, 'spa_access' for things like sauna/pool day passes, 'transfer' for airport/taxi, 'activity' for tours/excursions, 'general' for anything else.",
+          },
         },
         required: ["name"],
       },
@@ -238,6 +243,7 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
     }
 
     case "add_service": {
+      const validCategories = ["spa_treatment", "spa_access", "transfer", "activity", "general"];
       const service = await prisma.service.create({
         data: {
           hotelId,
@@ -245,6 +251,7 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
           description: args.description || null,
           durationMin: typeof args.durationMin === "number" ? Math.round(args.durationMin) : null,
           price: typeof args.price === "number" ? Math.round(args.price) : null,
+          category: validCategories.includes(args.category) ? args.category : "general",
         },
       });
       return { added: true, service };
