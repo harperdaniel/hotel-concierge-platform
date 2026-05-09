@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { getHotel, updateHotel, createKnowledge, createMenuItem, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus, type ChatMsg } from '../lib/api';
-import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff } from 'lucide-react';
 
 export default function HotelDetail() {
   const { id } = useParams<{ id: string }>();
@@ -299,11 +299,19 @@ function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged:
   const [staffToken, setStaffToken] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([
-    { role: 'assistant', content: `Hi! I'm here to help you set up **${hotel.name}**. I can add menu items, services, knowledge entries, or update your hotel info — just tell me what you want to do.\n\nFor example, try:\n- "Add Ribbe, 320 kr, mains, with crispy crackling"\n- "Add a 60-minute spa massage for 890 kr"\n- "Add a policy: check-in is from 15:00"\n- "What's on my menu?"` },
+    { role: 'assistant', content: `Hi! I'm here to help you set up **${hotel.name}**. I can add menu items, services, knowledge entries, or update your hotel info — just tell me what you want to do.\n\nFor example, try:\n- "Add Ribbe, 320 kr, mains, with crispy crackling"\n- "Add a 60-minute spa massage for 890 kr"\n- "Add a policy: check-in is from 15:00"\n- "What's on my menu?"\n\n🎙️ Tap the mic button to speak instead of type — try Norwegian or English.` },
   ]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [toolNotices, setToolNotices] = useState<string[]>([]);
+  const [recording, setRecording] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceLang, setVoiceLang] = useState<'nb-NO' | 'en-US'>(
+    typeof navigator !== 'undefined' && /\bn[bo]/i.test(navigator.language || '') ? 'nb-NO' : 'en-US'
+  );
+  const recognitionRef = useRef<any>(null);
+  const finalTranscriptRef = useRef<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -353,6 +361,74 @@ function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged:
       { role: 'assistant', content: `Reset! I'm ready to help with ${hotel.name}. What would you like to do?` },
     ]);
     setToolNotices([]);
+  }
+
+  // ── Voice input (Web Speech API) ──────────────────────────────
+
+  const SpeechRecognition: any =
+    typeof window !== 'undefined' &&
+    ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+
+  const speechSupported = !!SpeechRecognition;
+
+  function startRecording() {
+    if (!speechSupported) {
+      setVoiceError('Voice input not supported in this browser. Try Chrome or Safari.');
+      return;
+    }
+    setVoiceError(null);
+    finalTranscriptRef.current = '';
+    setInterimTranscript('');
+    try {
+      const rec = new SpeechRecognition();
+      rec.lang = voiceLang;
+      rec.interimResults = true;
+      rec.continuous = true;
+      rec.onresult = (e: any) => {
+        let interim = '';
+        let final = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) final += t;
+          else interim += t;
+        }
+        if (final) finalTranscriptRef.current = (finalTranscriptRef.current + ' ' + final).trim();
+        setInterimTranscript(interim);
+      };
+      rec.onerror = (e: any) => {
+        setVoiceError(`Voice error: ${e.error || 'unknown'}`);
+        setRecording(false);
+      };
+      rec.onend = () => {
+        setRecording(false);
+        const fullText = (finalTranscriptRef.current + ' ' + (interimTranscript || '')).trim();
+        if (fullText) {
+          setInput((prev) => (prev ? prev + ' ' + fullText : fullText));
+        }
+        setInterimTranscript('');
+      };
+      recognitionRef.current = rec;
+      rec.start();
+      setRecording(true);
+    } catch (err: any) {
+      setVoiceError(err?.message || 'Could not start voice input');
+      setRecording(false);
+    }
+  }
+
+  function stopRecording() {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  function toggleRecording() {
+    if (recording) stopRecording();
+    else startRecording();
   }
 
   if (tokenError) {
@@ -415,20 +491,61 @@ function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged:
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Voice status / error */}
+      {(recording || interimTranscript || voiceError) && (
+        <div className="px-3 py-2 border-t bg-blue-50 text-xs text-blue-800 flex items-center gap-2">
+          {recording && (
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+              Listening ({voiceLang === 'nb-NO' ? 'Norwegian' : 'English'})…
+            </span>
+          )}
+          {interimTranscript && (
+            <span className="italic text-blue-600 truncate">“{interimTranscript}”</span>
+          )}
+          {voiceError && <span className="text-red-700">⚠️ {voiceError}</span>}
+        </div>
+      )}
+
       {/* Input */}
       <form onSubmit={handleSend} className="border-t p-3 flex gap-2">
+        {speechSupported && (
+          <>
+            <button
+              type="button"
+              onClick={toggleRecording}
+              disabled={!staffToken || sending}
+              title={recording ? 'Stop recording' : `Start voice (${voiceLang === 'nb-NO' ? 'Norwegian' : 'English'})`}
+              className={`flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium shrink-0 ${
+                recording
+                  ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
+                  : 'bg-gray-100 border text-gray-700 hover:bg-gray-200'
+              } disabled:opacity-50`}
+            >
+              {recording ? <MicOff size={18} /> : <Mic size={18} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setVoiceLang(voiceLang === 'nb-NO' ? 'en-US' : 'nb-NO')}
+              title="Toggle voice language"
+              className="hidden sm:flex items-center justify-center px-2 py-2 rounded-lg text-xs font-medium bg-gray-50 border text-gray-600 hover:bg-gray-100 shrink-0"
+            >
+              {voiceLang === 'nb-NO' ? '🇳🇴' : '🇬🇧'}
+            </button>
+          </>
+        )}
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={!staffToken || sending}
-          placeholder="Tell me what to add or update…"
-          className="flex-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          placeholder="Tell me what to add or update… (or tap 🎙️ to speak)"
+          className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
         />
         <button
           type="submit"
           disabled={!staffToken || sending || !input.trim()}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium shrink-0"
         >
           <Send size={16} />
           <span className="hidden sm:inline">Send</span>
