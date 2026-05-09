@@ -34,6 +34,11 @@ export async function getHotel(req: Request, res: Response): Promise<void> {
       services: true,
       telegramBot: true,
       openclawConfig: true,
+      venues: {
+        where: { active: true },
+        include: { _count: { select: { menuItems: true } } },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
 

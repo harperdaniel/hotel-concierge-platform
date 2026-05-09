@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { getHotel, updateHotel, createKnowledge, createMenuItem, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus, type ChatMsg } from '../lib/api';
-import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves } from 'lucide-react';
+import { getHotel, updateHotel, createKnowledge, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, listVenues, createVenue, addVenueMenuItem, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus, type ChatMsg, type Venue } from '../lib/api';
+import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves, Building2, Wine, Dumbbell, Briefcase, Plane, Dog, BedDouble, Coffee, ChefHat } from 'lucide-react';
 
 export default function HotelDetail() {
   const { id } = useParams<{ id: string }>();
@@ -10,7 +10,7 @@ export default function HotelDetail() {
   const [hotel, setHotel] = useState<Hotel | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'info' | 'knowledge' | 'menu' | 'services' | 'spa' | 'bots' | 'chat'>(
+  const [activeTab, setActiveTab] = useState<'info' | 'facilities' | 'knowledge' | 'menu' | 'services' | 'spa' | 'bots' | 'chat'>(
     searchParams.get('welcome') === '1' ? 'bots' : 'info'
   );
   const justCreated = searchParams.get('welcome') === '1';
@@ -26,7 +26,6 @@ export default function HotelDetail() {
   const [newKnowledgeContent, setNewKnowledgeContent] = useState('');
 
   // New menu item
-  const [newMenuItem, setNewMenuItem] = useState({ name: '', description: '', price: 0, category: 'mains' });
 
   useEffect(() => {
     if (!id) return;
@@ -67,18 +66,6 @@ export default function HotelDetail() {
     loadHotel();
   }
 
-  async function handleAddMenuItem() {
-    if (!id || !newMenuItem.name.trim()) return;
-    await createMenuItem(id, {
-      name: newMenuItem.name,
-      description: newMenuItem.description || undefined,
-      price: Math.round(newMenuItem.price * 100), // convert to cents
-      category: newMenuItem.category,
-    });
-    setNewMenuItem({ name: '', description: '', price: 0, category: 'mains' });
-    loadHotel();
-  }
-
   if (loading) {
     return (
       <Layout>
@@ -101,10 +88,11 @@ export default function HotelDetail() {
   const tabs = [
     { key: 'info', label: 'Info', icon: Save },
     { key: 'chat', label: 'AI Chat', icon: Sparkles },
-    { key: 'knowledge', label: 'Knowledge', icon: BookOpen },
-    { key: 'menu', label: 'Menu', icon: Utensils },
-    { key: 'services', label: 'Services', icon: ConciergeBell },
+    { key: 'facilities', label: 'Facilities', icon: Building2 },
+    { key: 'menu', label: 'Restaurants', icon: Utensils },
     { key: 'spa', label: 'Spa', icon: Waves },
+    { key: 'services', label: 'Services', icon: ConciergeBell },
+    { key: 'knowledge', label: 'Knowledge', icon: BookOpen },
     { key: 'bots', label: 'Bot Setup', icon: Bot },
   ] as const;
 
@@ -213,64 +201,7 @@ export default function HotelDetail() {
       )}
 
       {/* Tab: Menu */}
-      {activeTab === 'menu' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
-            <h3 className="font-semibold text-gray-900">Add Menu Item</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <input
-                value={newMenuItem.name}
-                onChange={(e) => setNewMenuItem({ ...newMenuItem, name: e.target.value })}
-                className="px-3 py-2 border rounded-lg"
-                placeholder="Item name"
-              />
-              <input
-                value={newMenuItem.description}
-                onChange={(e) => setNewMenuItem({ ...newMenuItem, description: e.target.value })}
-                className="px-3 py-2 border rounded-lg"
-                placeholder="Description"
-              />
-              <input
-                type="number"
-                value={newMenuItem.price || ''}
-                onChange={(e) => setNewMenuItem({ ...newMenuItem, price: Number(e.target.value) })}
-                className="px-3 py-2 border rounded-lg"
-                placeholder="Price (NOK)"
-                step="0.01"
-              />
-              <select
-                value={newMenuItem.category}
-                onChange={(e) => setNewMenuItem({ ...newMenuItem, category: e.target.value })}
-                className="px-3 py-2 border rounded-lg text-sm"
-              >
-                <option value="starters">Starters</option>
-                <option value="mains">Mains</option>
-                <option value="desserts">Desserts</option>
-                <option value="drinks">Drinks</option>
-              </select>
-            </div>
-            <button
-              onClick={handleAddMenuItem}
-              className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm"
-            >
-              <Plus size={16} /> Add Item
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {hotel.menuItems?.map((item: MenuItem) => (
-              <div key={item.id} className="bg-white rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <span className="text-xs font-medium bg-gray-100 px-2 py-1 rounded text-gray-600">{item.category}</span>
-                  <span className="ml-2 font-medium text-gray-900">{item.name}</span>
-                  {item.description && <p className="text-sm text-gray-500 mt-1">{item.description}</p>}
-                </div>
-                <span className="font-semibold text-gray-900 shrink-0">{(item.price / 100).toFixed(2)} NOK</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {activeTab === 'menu' && <RestaurantsTab hotel={hotel} onChanged={loadHotel} />}
 
       {/* Tab: Services */}
       {activeTab === 'services' && (
@@ -299,6 +230,9 @@ export default function HotelDetail() {
 
       {/* Tab: Spa (filtered services) */}
       {activeTab === 'spa' && <SpaTab hotel={hotel} />}
+
+      {/* Tab: Facilities (overview + inline edits) */}
+      {activeTab === 'facilities' && <FacilitiesTab hotel={hotel} onChanged={loadHotel} />}
 
       {/* Tab: Bot Setup */}
       {activeTab === 'bots' && <BotSetupTab hotel={hotel} />}
@@ -1268,6 +1202,510 @@ function WelcomeEmailPanel({ hotel, deepLink }: { hotel: Hotel; deepLink: string
         <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Raw Telegram link (for embedding manually)</summary>
         <code className="block mt-2 bg-gray-100 px-3 py-2 rounded text-xs break-all">{deepLink}</code>
       </details>
+    </div>
+  );
+}
+
+// ── Restaurants Tab (venue-aware menu management) ────────────────────────
+
+const VENUE_KIND_LABELS: Record<string, string> = {
+  restaurant: 'Restaurant',
+  bar: 'Bar',
+  lounge: 'Lounge',
+  room_service: 'Room service',
+  cafe: 'Café',
+};
+
+const VENUE_KIND_ICON: Record<string, any> = {
+  restaurant: ChefHat,
+  bar: Wine,
+  lounge: Wine,
+  room_service: BedDouble,
+  cafe: Coffee,
+};
+
+function RestaurantsTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
+  const [venues, setVenues] = useState<Venue[]>(hotel.venues || []);
+  const [loading, setLoading] = useState(false);
+  const [showAddForm, setShowAddForm] = useState((hotel.venues || []).length === 0);
+
+  // Edit/add UI state
+  const [newVenue, setNewVenue] = useState({ name: '', kind: 'restaurant', hours: '', location: '' });
+  const [creatingVenue, setCreatingVenue] = useState(false);
+
+  // Item-add state, per venue
+  const [itemDrafts, setItemDrafts] = useState<Record<string, { name: string; description: string; price: string; category: string; availableForRoomService: boolean }>>({});
+
+  async function refreshVenues() {
+    setLoading(true);
+    try {
+      const res = await listVenues(hotel.id);
+      setVenues(res.venues);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreateVenue() {
+    if (!newVenue.name.trim()) return;
+    setCreatingVenue(true);
+    try {
+      await createVenue(hotel.id, {
+        name: newVenue.name.trim(),
+        kind: newVenue.kind as any,
+        hours: newVenue.hours.trim() || null,
+        location: newVenue.location.trim() || null,
+      });
+      setNewVenue({ name: '', kind: 'restaurant', hours: '', location: '' });
+      setShowAddForm(false);
+      await refreshVenues();
+      onChanged();
+    } finally {
+      setCreatingVenue(false);
+    }
+  }
+
+  async function handleAddItem(venueId: string) {
+    const d = itemDrafts[venueId];
+    if (!d?.name.trim()) return;
+    const price = parseFloat(d.price || '0');
+    await addVenueMenuItem(venueId, {
+      name: d.name.trim(),
+      description: d.description.trim() || undefined,
+      price: Math.round(price * 100),
+      category: d.category,
+      availableForRoomService: d.availableForRoomService,
+    });
+    setItemDrafts({ ...itemDrafts, [venueId]: { name: '', description: '', price: '', category: 'mains', availableForRoomService: true } });
+    await refreshVenues();
+    onChanged();
+  }
+
+  function getDraft(venueId: string) {
+    return (
+      itemDrafts[venueId] || {
+        name: '',
+        description: '',
+        price: '',
+        category: 'mains',
+        availableForRoomService: true,
+      }
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Restaurants & Bars</h3>
+          <p className="text-sm text-gray-500">Each venue has its own menu. Items can also be set to be available for room service.</p>
+        </div>
+        {!showAddForm && (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium"
+          >
+            <Plus size={16} /> Add venue
+          </button>
+        )}
+      </div>
+
+      {showAddForm && (
+        <div className="bg-white border rounded-xl p-4 sm:p-6 space-y-3">
+          <h4 className="font-medium text-gray-900">New venue</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input
+              value={newVenue.name}
+              onChange={(e) => setNewVenue({ ...newVenue, name: e.target.value })}
+              placeholder="Name (e.g. Main Restaurant)"
+              className="px-3 py-2 border rounded-lg text-sm"
+            />
+            <select
+              value={newVenue.kind}
+              onChange={(e) => setNewVenue({ ...newVenue, kind: e.target.value })}
+              className="px-3 py-2 border rounded-lg text-sm"
+            >
+              <option value="restaurant">Restaurant</option>
+              <option value="bar">Bar</option>
+              <option value="lounge">Lounge</option>
+              <option value="cafe">Café</option>
+              <option value="room_service">Room service kitchen</option>
+            </select>
+            <input
+              value={newVenue.hours}
+              onChange={(e) => setNewVenue({ ...newVenue, hours: e.target.value })}
+              placeholder="Hours (e.g. 17:00–22:00)"
+              className="px-3 py-2 border rounded-lg text-sm"
+            />
+            <input
+              value={newVenue.location}
+              onChange={(e) => setNewVenue({ ...newVenue, location: e.target.value })}
+              placeholder="Location (e.g. Lobby level)"
+              className="px-3 py-2 border rounded-lg text-sm"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCreateVenue}
+              disabled={creatingVenue || !newVenue.name.trim()}
+              className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+            >
+              {creatingVenue ? <Loader size={16} className="animate-spin" /> : <Plus size={16} />}
+              Create venue
+            </button>
+            <button onClick={() => setShowAddForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {venues.length === 0 && !loading && !showAddForm && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          No venues yet. Click <strong>“Add venue”</strong> to create your first restaurant or bar — or use the AI Chat tab and just say <em>“we have a main restaurant called Aurora, open 17:00–22:00”</em>.
+        </div>
+      )}
+
+      {venues.map((venue) => {
+        const Icon = VENUE_KIND_ICON[venue.kind] || ChefHat;
+        const draft = getDraft(venue.id);
+        const items = (hotel.menuItems || []).filter((i: any) => i.venueId === venue.id);
+        return (
+          <div key={venue.id} className="bg-white border rounded-xl overflow-hidden">
+            <div className="p-4 sm:p-5 border-b bg-gray-50">
+              <div className="flex items-start gap-3">
+                <Icon size={22} className="text-blue-600 mt-1" />
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-gray-900">{venue.name}</h4>
+                  <div className="text-xs text-gray-500 flex flex-wrap gap-3 mt-1">
+                    <span>{VENUE_KIND_LABELS[venue.kind] || venue.kind}</span>
+                    {venue.hours && <span>🕐 {venue.hours}</span>}
+                    {venue.location && <span>📍 {venue.location}</span>}
+                    <span>{items.length} items</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Menu items */}
+            <div className="p-4 sm:p-5 space-y-2">
+              {items.length === 0 ? (
+                <p className="text-sm text-gray-400 italic">No items yet — add one below or use the AI Chat.</p>
+              ) : (
+                items.map((item: any) => (
+                  <div key={item.id} className="border rounded-lg p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded text-gray-600">{item.category}</span>
+                      <span className="ml-2 font-medium text-gray-900">{item.name}</span>
+                      {item.description && <p className="text-sm text-gray-500 mt-1">{item.description}</p>}
+                      {item.availableForRoomService === false && (
+                        <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded mt-1 inline-block">venue only — no room service</span>
+                      )}
+                    </div>
+                    <span className="font-semibold text-gray-900 shrink-0">{(item.price / 100).toFixed(2)} NOK</span>
+                  </div>
+                ))
+              )}
+
+              {/* Quick add row */}
+              <div className="border-t pt-3 mt-3">
+                <p className="text-xs font-semibold text-gray-500 mb-2">Add item</p>
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                  <input
+                    value={draft.name}
+                    onChange={(e) => setItemDrafts({ ...itemDrafts, [venue.id]: { ...draft, name: e.target.value } })}
+                    placeholder="Item name"
+                    className="px-3 py-2 border rounded-lg text-sm sm:col-span-2"
+                  />
+                  <input
+                    value={draft.description}
+                    onChange={(e) => setItemDrafts({ ...itemDrafts, [venue.id]: { ...draft, description: e.target.value } })}
+                    placeholder="Description (optional)"
+                    className="px-3 py-2 border rounded-lg text-sm sm:col-span-2"
+                  />
+                  <input
+                    type="number"
+                    value={draft.price}
+                    onChange={(e) => setItemDrafts({ ...itemDrafts, [venue.id]: { ...draft, price: e.target.value } })}
+                    placeholder="NOK"
+                    step="0.01"
+                    className="px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <select
+                    value={draft.category}
+                    onChange={(e) => setItemDrafts({ ...itemDrafts, [venue.id]: { ...draft, category: e.target.value } })}
+                    className="px-3 py-2 border rounded-lg text-sm"
+                  >
+                    <option value="starters">Starters</option>
+                    <option value="mains">Mains</option>
+                    <option value="desserts">Desserts</option>
+                    <option value="drinks">Drinks</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <label className="flex items-center gap-2 text-sm text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={draft.availableForRoomService}
+                      onChange={(e) =>
+                        setItemDrafts({ ...itemDrafts, [venue.id]: { ...draft, availableForRoomService: e.target.checked } })
+                      }
+                    />
+                    Also room service
+                  </label>
+                  <button
+                    onClick={() => handleAddItem(venue.id)}
+                    disabled={!draft.name.trim() || !draft.price}
+                    className="ml-auto flex items-center gap-1 bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
+                  >
+                    <Plus size={14} /> Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Orphaned items (items without a venue) */}
+      {(() => {
+        const orphans = (hotel.menuItems || []).filter((i: any) => !i.venueId);
+        if (orphans.length === 0) return null;
+        return (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p className="font-medium text-amber-900 mb-2">Items without a venue ({orphans.length})</p>
+            <p className="text-xs text-amber-700 mb-3">These items aren't tied to a specific venue yet. Use the AI Chat to assign them, or recreate them within a venue.</p>
+            <div className="space-y-2">
+              {orphans.map((item: any) => (
+                <div key={item.id} className="bg-white border rounded-lg p-3 flex items-center justify-between gap-2">
+                  <span className="text-sm text-gray-900">{item.name}</span>
+                  <span className="text-xs text-gray-500">{(item.price / 100).toFixed(2)} NOK</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// ── Facilities Tab (overview + inline editors for unstructured facilities) ──
+
+const FACILITY_DEFS: {
+  flagKey: keyof Hotel;
+  label: string;
+  icon: any;
+  type: 'tab' | 'inline'; // 'tab' = drill into another tab, 'inline' = edit here
+  drillTab?: string;
+  hoursField?: keyof Hotel;
+  notesField?: keyof Hotel;
+  policyField?: keyof Hotel;
+  description: string;
+}[] = [
+  { flagKey: 'hasRestaurant', label: 'Restaurants & Bars', icon: Utensils, type: 'tab', drillTab: 'menu', description: 'Manage venues and menus' },
+  { flagKey: 'hasRoomService', label: 'Room service', icon: BedDouble, type: 'inline', description: 'In-room dining (uses items flagged for room service)' },
+  { flagKey: 'hasSpa', label: 'Spa', icon: Sparkles, type: 'tab', drillTab: 'spa', hoursField: 'spaHours', notesField: 'spaNotes', description: 'Treatments and access passes' },
+  { flagKey: 'hasPool', label: 'Pool / wellness', icon: Waves, type: 'inline', hoursField: 'poolHours', notesField: 'poolNotes', description: 'Pool, sauna, hot tub' },
+  { flagKey: 'hasGym', label: 'Gym', icon: Dumbbell, type: 'inline', hoursField: 'gymHours', notesField: 'gymNotes', description: 'Fitness room' },
+  { flagKey: 'hasBar', label: 'Bar / lounge', icon: Wine, type: 'inline', hoursField: 'barHours', notesField: 'barNotes', description: 'Drinks and snacks' },
+  { flagKey: 'hasConference', label: 'Conference', icon: Briefcase, type: 'inline', notesField: 'conferenceNotes', description: 'Meeting rooms, events' },
+  { flagKey: 'hasTransfers', label: 'Airport transfers', icon: Plane, type: 'inline', notesField: 'transferNotes', description: 'Pickup/dropoff service' },
+  { flagKey: 'petFriendly', label: 'Pet-friendly', icon: Dog, type: 'inline', policyField: 'petPolicy', description: 'Pet policy' },
+];
+
+function FacilitiesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ hours: string; notes: string; policy: string; flag: boolean }>({
+    hours: '',
+    notes: '',
+    policy: '',
+    flag: false,
+  });
+  const [saving, setSaving] = useState(false);
+
+  function startEdit(def: typeof FACILITY_DEFS[number]) {
+    setEditing(String(def.flagKey));
+    setDraft({
+      hours: (def.hoursField ? (hotel[def.hoursField] as string | null) : '') || '',
+      notes: (def.notesField ? (hotel[def.notesField] as string | null) : '') || '',
+      policy: (def.policyField ? (hotel[def.policyField] as string | null) : '') || '',
+      flag: !!hotel[def.flagKey],
+    });
+  }
+
+  async function saveDef(def: typeof FACILITY_DEFS[number]) {
+    setSaving(true);
+    try {
+      const payload: any = {};
+      payload[def.flagKey] = draft.flag;
+      if (def.hoursField) payload[def.hoursField] = draft.hours.trim() || null;
+      if (def.notesField) payload[def.notesField] = draft.notes.trim() || null;
+      if (def.policyField) payload[def.policyField] = draft.policy.trim() || null;
+      await updateHotel(hotel.id, payload);
+      setEditing(null);
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleFlag(def: typeof FACILITY_DEFS[number]) {
+    setSaving(true);
+    try {
+      await updateHotel(hotel.id, { [def.flagKey]: !hotel[def.flagKey] } as any);
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900">Facilities</h3>
+        <p className="text-sm text-gray-500">An overview of what your hotel offers and how it's configured. Tap any card to edit details.</p>
+      </div>
+
+      <div className="space-y-3">
+        {FACILITY_DEFS.map((def) => {
+          const Icon = def.icon;
+          const enabled = !!hotel[def.flagKey];
+          const isEditing = editing === String(def.flagKey);
+          const hoursValue = def.hoursField ? (hotel[def.hoursField] as string | null) : null;
+          const notesValue = def.notesField ? (hotel[def.notesField] as string | null) : null;
+          const policyValue = def.policyField ? (hotel[def.policyField] as string | null) : null;
+          const summary = [hoursValue && `🕐 ${hoursValue}`, notesValue, policyValue].filter(Boolean).join(' · ');
+
+          // Special case: Restaurants tab gets venue count summary
+          let extraSummary = '';
+          if (def.flagKey === 'hasRestaurant') {
+            const venueCount = (hotel.venues || []).length;
+            extraSummary = venueCount > 0 ? `${venueCount} venue${venueCount === 1 ? '' : 's'}` : 'no venues yet';
+          }
+          if (def.flagKey === 'hasSpa') {
+            const treatments = (hotel.services || []).filter((s: any) => s.category === 'spa_treatment').length;
+            const accesses = (hotel.services || []).filter((s: any) => s.category === 'spa_access').length;
+            extraSummary = treatments + accesses > 0 ? `${treatments} treatment${treatments === 1 ? '' : 's'}, ${accesses} access pass${accesses === 1 ? '' : 'es'}` : 'no items yet';
+          }
+
+          return (
+            <div
+              key={String(def.flagKey)}
+              className={`border rounded-xl overflow-hidden ${enabled ? 'bg-white' : 'bg-gray-50 border-gray-200'}`}
+            >
+              <div className="p-4 sm:p-5 flex items-start gap-3">
+                <Icon size={22} className={enabled ? 'text-blue-600 mt-1' : 'text-gray-400 mt-1'} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className={`font-semibold ${enabled ? 'text-gray-900' : 'text-gray-500'}`}>{def.label}</h4>
+                    {enabled ? (
+                      <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded">enabled</span>
+                    ) : (
+                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">disabled</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500 mt-0.5">{def.description}</p>
+                  {enabled && (summary || extraSummary) && (
+                    <p className="text-sm text-gray-700 mt-1.5">
+                      {summary}
+                      {summary && extraSummary && ' · '}
+                      {extraSummary && <span className="text-gray-500">{extraSummary}</span>}
+                    </p>
+                  )}
+                  {enabled && !summary && def.type === 'inline' && !isEditing && (
+                    <p className="text-sm text-amber-700 mt-1.5">⚠️ No details captured yet</p>
+                  )}
+                </div>
+                <div className="shrink-0 flex flex-col items-end gap-1">
+                  {def.type === 'tab' && enabled ? (
+                    <span className="text-xs text-gray-500">→ open the {def.drillTab === 'menu' ? 'Restaurants' : 'Spa'} tab</span>
+                  ) : enabled && !isEditing ? (
+                    <button onClick={() => startEdit(def)} className="text-xs text-blue-600 hover:underline">
+                      Edit
+                    </button>
+                  ) : !enabled ? (
+                    <button
+                      onClick={() => toggleFlag(def)}
+                      disabled={saving}
+                      className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                    >
+                      Enable
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {isEditing && (
+                <div className="border-t bg-gray-50 p-4 space-y-3">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={draft.flag}
+                      onChange={(e) => setDraft({ ...draft, flag: e.target.checked })}
+                    />
+                    {def.label} is offered at this hotel
+                  </label>
+
+                  {def.hoursField && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Hours</label>
+                      <input
+                        type="text"
+                        value={draft.hours}
+                        onChange={(e) => setDraft({ ...draft, hours: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                        placeholder="e.g. 06:00–22:00"
+                      />
+                    </div>
+                  )}
+
+                  {def.notesField && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+                      <textarea
+                        value={draft.notes}
+                        onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+                        rows={2}
+                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                        placeholder="Anything important guests should know"
+                      />
+                    </div>
+                  )}
+
+                  {def.policyField && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Policy</label>
+                      <textarea
+                        value={draft.policy}
+                        onChange={(e) => setDraft({ ...draft, policy: e.target.value })}
+                        rows={2}
+                        className="w-full px-3 py-2 border rounded-lg text-sm"
+                        placeholder="e.g. Pets allowed in rooms 200–220, 300 NOK/night"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => saveDef(def)}
+                      disabled={saving}
+                      className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                    >
+                      {saving ? <Loader size={14} className="animate-spin" /> : <Save size={14} />}
+                      Save
+                    </button>
+                    <button onClick={() => setEditing(null)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

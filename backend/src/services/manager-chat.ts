@@ -19,12 +19,28 @@ You are NEVER speaking with a guest. You are ALWAYS speaking with hotel staff.
 # Your job
 
 Help staff add or update:
-- Menu items (room service / restaurant)
-- Services (spa, transfers, etc.)
+- Venues (restaurants, bars, lounges, cafes, room-service kitchen)
+- Menu items (each can belong to a venue, with a flag for room-service availability)
+- Services (spa treatments, spa access, transfers, activities)
 - Knowledge (amenities, policies, local area, general info)
+- Facility flags (hasGym, hasPool, etc.) and structured detail fields (gymHours, poolHours, barHours, conferenceNotes, petPolicy, etc.)
 
 You have tools to call the backend. Always confirm intent before mutating data, especially in bulk.
 When the user mentions prices in NOK, convert to integer øre (NOK × 100) for the API.
+
+# Proactive nudges
+
+If the hotel has a facility flag set (e.g. hasPool=true) but the matching detail field is empty (e.g. poolHours is null), gently offer to capture it:
+  "I see you have a pool but no hours yet — want to add them?"
+Don't pester — ask once per topic per conversation.
+
+If the user mentions a venue you don't yet have ("the sky bar", "our breakfast cafe"), call list_venues first; if it doesn't exist, propose creating it before adding items to it.
+
+# Multi-restaurant tips
+
+When adding menu items and the hotel has multiple venues, ASK which venue the items belong to. Use list_venues to show the options. If there's exactly one venue, just use it.
+For items that should also be deliverable to the room, set availableForRoomService=true (default).
+For items that are venue-only (e.g. fine-dining tasting menu), set availableForRoomService=false.
 
 # Tone
 
@@ -55,8 +71,57 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "list_venues",
+      description: "List the hotel's venues (restaurants, bars, lounges, room-service kitchen, cafe).",
+      parameters: { type: "object", properties: {}, required: [] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_venue",
+      description: "Create a new venue. A venue is a place inside the hotel that serves food/drinks (restaurant, bar, lounge, cafe, or the room-service kitchen).",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Venue name, e.g. 'Main Restaurant', 'Sky Bar'" },
+          kind: {
+            type: "string",
+            enum: ["restaurant", "bar", "lounge", "room_service", "cafe"],
+          },
+          description: { type: "string" },
+          hours: { type: "string", description: "e.g. '17:00-22:00'" },
+          location: { type: "string", description: "e.g. 'Lobby level' or '12th floor'" },
+        },
+        required: ["name", "kind"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_venue",
+      description: "Update a venue's hours, name, location, or other fields. Use list_venues first to get the venue ID.",
+      parameters: {
+        type: "object",
+        properties: {
+          venueId: { type: "string" },
+          name: { type: "string" },
+          kind: { type: "string", enum: ["restaurant", "bar", "lounge", "room_service", "cafe"] },
+          description: { type: "string" },
+          hours: { type: "string" },
+          location: { type: "string" },
+          active: { type: "boolean" },
+        },
+        required: ["venueId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "add_menu_item",
-      description: "Add a single menu item to the hotel. Price is in øre (NOK × 100).",
+      description: "Add a single menu item to the hotel (or to a specific venue). Price is in øre (NOK × 100). When venueId is provided, the item belongs to that venue. availableForRoomService defaults to true.",
       parameters: {
         type: "object",
         properties: {
@@ -64,6 +129,8 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           description: { type: "string", description: "Optional description" },
           price: { type: "number", description: "Price in øre (e.g. 32000 = 320 NOK)" },
           category: { type: "string", description: "Category: 'mains', 'starters', 'desserts', 'drinks'" },
+          venueId: { type: "string", description: "Optional venue this item belongs to" },
+          availableForRoomService: { type: "boolean", description: "Whether this item can also be ordered to the room (default: true)" },
         },
         required: ["name", "price", "category"],
       },
@@ -189,6 +256,50 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "update_facility_details",
+      description: "Set structured details for the simpler facilities: spa hours/notes, pool hours/notes, gym hours/notes, bar hours/notes, conference notes, pet policy, transfer notes. These are short text fields shown on the Facilities tab and used by the guest concierge to answer questions like 'what time does the gym open?'.",
+      parameters: {
+        type: "object",
+        properties: {
+          spaHours: { type: "string" },
+          spaNotes: { type: "string" },
+          poolHours: { type: "string" },
+          poolNotes: { type: "string" },
+          gymHours: { type: "string" },
+          gymNotes: { type: "string" },
+          barHours: { type: "string" },
+          barNotes: { type: "string" },
+          conferenceNotes: { type: "string" },
+          petPolicy: { type: "string" },
+          transferNotes: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_facility_flags",
+      description: "Toggle which facilities the hotel has. Useful when the user mentions 'we also have a pool' that wasn't ticked during onboarding.",
+      parameters: {
+        type: "object",
+        properties: {
+          hasRestaurant: { type: "boolean" },
+          hasRoomService: { type: "boolean" },
+          hasSpa: { type: "boolean" },
+          hasPool: { type: "boolean" },
+          hasGym: { type: "boolean" },
+          hasBar: { type: "boolean" },
+          hasConference: { type: "boolean" },
+          hasTransfers: { type: "boolean" },
+          petFriendly: { type: "boolean" },
+        },
+      },
+    },
+  },
 ];
 
 // ── Tool execution ────────────────────────────────────
@@ -202,6 +313,7 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
           menuItems: { orderBy: { category: "asc" } },
           services: true,
           knowledgeEntries: true,
+          venues: { include: { _count: { select: { menuItems: true } } } },
         },
       });
       if (!hotel) return { error: "Hotel not found" };
@@ -213,13 +325,78 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
       const item = await prisma.menuItem.create({
         data: {
           hotelId,
+          venueId: args.venueId || null,
           name: args.name,
           description: args.description || null,
           price: Math.round(args.price),
           category: args.category,
+          availableForRoomService:
+            typeof args.availableForRoomService === "boolean" ? args.availableForRoomService : true,
         },
       });
       return { added: true, item };
+    }
+
+    case "list_venues": {
+      const venues = await prisma.venue.findMany({
+        where: { hotelId, active: true },
+        include: { _count: { select: { menuItems: true } } },
+        orderBy: { createdAt: "asc" },
+      });
+      return { venues };
+    }
+
+    case "add_venue": {
+      const validKinds = ["restaurant", "bar", "lounge", "room_service", "cafe"];
+      const venue = await prisma.venue.create({
+        data: {
+          hotelId,
+          name: args.name,
+          kind: validKinds.includes(args.kind) ? args.kind : "restaurant",
+          description: args.description || null,
+          hours: args.hours || null,
+          location: args.location || null,
+        },
+      });
+      return { added: true, venue };
+    }
+
+    case "update_venue": {
+      const venue = await prisma.venue.findUnique({ where: { id: args.venueId } });
+      if (!venue || venue.hotelId !== hotelId) return { error: "Venue not found" };
+      const allowed = ["name", "kind", "description", "hours", "location", "active"];
+      const updates: Record<string, any> = {};
+      for (const k of allowed) if (k in args) updates[k] = args[k];
+      if (Object.keys(updates).length === 0) return { error: "No updates" };
+      const updated = await prisma.venue.update({ where: { id: args.venueId }, data: updates });
+      return { updated: true, venue: updated };
+    }
+
+    case "update_facility_details": {
+      const allowed = [
+        "spaHours", "spaNotes", "poolHours", "poolNotes",
+        "gymHours", "gymNotes", "barHours", "barNotes",
+        "conferenceNotes", "petPolicy", "transferNotes",
+      ];
+      const updates: Record<string, any> = {};
+      for (const k of allowed) if (k in args) updates[k] = args[k];
+      if (Object.keys(updates).length === 0) return { error: "No updates" };
+      const hotel = await prisma.hotel.update({ where: { id: hotelId }, data: updates });
+      const { smtpPass: _smtpPass, smtpUser: _smtpUser, ...rest } = hotel as any;
+      return { updated: true, hotel: rest };
+    }
+
+    case "set_facility_flags": {
+      const allowed = [
+        "hasRestaurant", "hasRoomService", "hasSpa", "hasPool", "hasGym",
+        "hasBar", "hasConference", "hasTransfers", "petFriendly",
+      ];
+      const updates: Record<string, any> = {};
+      for (const k of allowed) if (k in args) updates[k] = args[k];
+      if (Object.keys(updates).length === 0) return { error: "No updates" };
+      const hotel = await prisma.hotel.update({ where: { id: hotelId }, data: updates });
+      const { smtpPass: _smtpPass, smtpUser: _smtpUser, ...rest } = hotel as any;
+      return { updated: true, hotel: rest };
     }
 
     case "add_menu_items_bulk": {

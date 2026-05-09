@@ -210,10 +210,19 @@ router.post("/knowledge", async (req: any, res) => {
   res.status(201).json({ entry });
 });
 
-// ── Update hotel info ─────────────────────────────────
+// ── Update hotel info / flags / facility details ────────────────────
 
 router.patch("/hotel", async (req: any, res) => {
-  const allowed = ["name", "address", "phone", "email", "website", "timezone"];
+  const allowed = [
+    "name", "address", "phone", "email", "website", "timezone",
+    // Facility flags
+    "hasRestaurant", "hasRoomService", "hasSpa", "hasPool", "hasGym",
+    "hasBar", "hasConference", "hasTransfers", "petFriendly",
+    // Facility detail fields
+    "spaHours", "spaNotes", "poolHours", "poolNotes",
+    "gymHours", "gymNotes", "barHours", "barNotes",
+    "conferenceNotes", "petPolicy", "transferNotes",
+  ];
   const updates: Record<string, any> = {};
   for (const k of allowed) {
     if (req.body && k in req.body) updates[k] = req.body[k];
@@ -253,6 +262,41 @@ router.delete("/services/:id", async (req: any, res) => {
   await prisma.service.delete({ where: { id } });
   res.json({ deleted: true });
 });
+
+// ── Venues (managed via staff token) ──────────────────────────────
+
+const VALID_VENUE_KINDS = ["restaurant", "bar", "lounge", "room_service", "cafe"];
+
+router.get("/venues", async (req: any, res) => {
+  const venues = await prisma.venue.findMany({
+    where: { hotelId: req.hotel.id, active: true },
+    include: { _count: { select: { menuItems: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  res.json({ venues });
+});
+
+router.post("/venues", async (req: any, res) => {
+  const { name, kind, description, hours, location } = req.body || {};
+  if (!name) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+  const venue = await prisma.venue.create({
+    data: {
+      hotelId: req.hotel.id,
+      name,
+      kind: VALID_VENUE_KINDS.includes(kind) ? kind : "restaurant",
+      description: description ?? null,
+      hours: hours ?? null,
+      location: location ?? null,
+    },
+  });
+  res.status(201).json({ venue });
+});
+
+// Update facility flags + structured details via PATCH /hotel (already exists,
+// but we need to allow more fields here)
 
 router.delete("/knowledge/:id", async (req: any, res) => {
   const id = req.params.id as string;

@@ -54,6 +54,20 @@ model Hotel {
   hasTransfers    Boolean @default(false)
   petFriendly     Boolean @default(false)
 
+  // Structured details for the simpler facilities (knowledge-style fields
+  // displayed on the Facilities tab and pulled into the concierge context)
+  spaHours         String?
+  spaNotes         String?
+  poolHours        String?
+  poolNotes        String?
+  gymHours         String?
+  gymNotes         String?
+  barHours         String?
+  barNotes         String?
+  conferenceNotes  String?
+  petPolicy        String?
+  transferNotes    String?
+
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -63,6 +77,7 @@ model Hotel {
   bookings           Booking[]
   telegramBot        TelegramBot?
   openclawConfig     OpenClawConfig?
+  venues             Venue[]
 
   @@map("hotels")
 }
@@ -80,18 +95,44 @@ model KnowledgeEntry {
   @@map("knowledge_entries")
 }
 
-// ── Menu Items (for room service) ─────────────────────
+// ── Venues (restaurants, bars, lounges, room-service kitchen, etc.) ───
+
+model Venue {
+  id          String  @id @default(cuid())
+  name        String  // "Main Restaurant", "Sky Bar", "Lobby Café", "Room Service"
+  kind        String  @default("restaurant") // "restaurant" | "bar" | "lounge" | "room_service" | "cafe"
+  description String?
+  hours       String? // "17:00-22:00" or freeform
+  location    String? // "Lobby level", "12th floor"
+  active      Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  hotelId String
+  hotel   Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  menuItems MenuItem[]
+
+  @@map("venues")
+}
+
+// ── Menu Items ────────────────────────────────────────────
 
 model MenuItem {
   id          String  @id @default(cuid())
   name        String
   description String?
-  price       Int     // price in cents/NOK øre to avoid float issues
+  price       Int     // price in cents/NOK øre
   category    String  // "mains" | "starters" | "desserts" | "drinks" | etc.
   available   Boolean @default(true)
+  // Whether this item can also be ordered to the room
+  availableForRoomService Boolean @default(true)
 
   hotelId String
   hotel   Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  venueId String?
+  venue   Venue?  @relation(fields: [venueId], references: [id], onDelete: SetNull)
 
   @@map("menu_items")
 }

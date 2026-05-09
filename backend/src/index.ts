@@ -8,6 +8,7 @@ import hotelRoutes from "./routes/hotels";
 import guestRoutes from "./routes/guest";
 import provisioningRoutes from "./routes/provisioning";
 import managerRoutes from "./routes/manager";
+import venueRoutes from "./routes/venues";
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use("/api/hotels", hotelRoutes);
 app.use("/api/guest", guestRoutes);
 app.use("/api/hotels", provisioningRoutes);
 app.use("/api/manager", managerRoutes);
+app.use("/api", venueRoutes); // /api/hotels/:id/venues, /api/venues/:id, /api/menu-items/:id
 
 // ── Health Check ──────────────────────────────────────
 app.get("/api/health", (_req, res) => {

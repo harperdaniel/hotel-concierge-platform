@@ -37,6 +37,21 @@ export interface User {
   role: string;
 }
 
+export interface Venue {
+  id: string;
+  name: string;
+  kind: 'restaurant' | 'bar' | 'lounge' | 'room_service' | 'cafe' | string;
+  description: string | null;
+  hours: string | null;
+  location: string | null;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  hotelId?: string;
+  _count?: { menuItems: number };
+  menuItems?: MenuItem[];
+}
+
 export interface Hotel {
   id: string;
   name: string;
@@ -55,8 +70,7 @@ export interface Hotel {
   smtpUser?: string | null;
   smtpFromName?: string | null;
   smtpFromEmail?: string | null;
-  // smtpPass intentionally NOT in the type — never returned to the client
-  // Facility flags (set during onboarding wizard)
+  // Facility flags
   hasRestaurant?: boolean;
   hasRoomService?: boolean;
   hasSpa?: boolean;
@@ -66,6 +80,20 @@ export interface Hotel {
   hasConference?: boolean;
   hasTransfers?: boolean;
   petFriendly?: boolean;
+  // Facility details
+  spaHours?: string | null;
+  spaNotes?: string | null;
+  poolHours?: string | null;
+  poolNotes?: string | null;
+  gymHours?: string | null;
+  gymNotes?: string | null;
+  barHours?: string | null;
+  barNotes?: string | null;
+  conferenceNotes?: string | null;
+  petPolicy?: string | null;
+  transferNotes?: string | null;
+  // Relations
+  venues?: Venue[];
   _count?: { menuItems: number; services: number; knowledgeEntries: number; bookings: number };
   knowledgeEntries?: KnowledgeEntry[];
   menuItems?: MenuItem[];
@@ -87,6 +115,8 @@ export interface MenuItem {
   price: number;
   category: string;
   available: boolean;
+  availableForRoomService?: boolean;
+  venueId?: string | null;
 }
 
 export interface Service {
@@ -267,4 +297,46 @@ export async function managerIdentify(startParam: string) {
 export async function getStaffToken(hotelId: string) {
   const { data } = await api.get(`/hotels/${hotelId}/staff-token`);
   return data as { staffToken: string };
+}
+
+// ── Venues ────────────────────────────────────────────────────
+
+export async function listVenues(hotelId: string) {
+  const { data } = await api.get(`/hotels/${hotelId}/venues`);
+  return data as { venues: Venue[] };
+}
+
+export async function getVenue(venueId: string) {
+  const { data } = await api.get(`/venues/${venueId}`);
+  return data as { venue: Venue };
+}
+
+export async function createVenue(hotelId: string, payload: Partial<Venue>) {
+  const { data } = await api.post(`/hotels/${hotelId}/venues`, payload);
+  return data as { venue: Venue };
+}
+
+export async function updateVenue(venueId: string, payload: Partial<Venue>) {
+  const { data } = await api.patch(`/venues/${venueId}`, payload);
+  return data as { venue: Venue };
+}
+
+export async function deleteVenue(venueId: string) {
+  const { data } = await api.delete(`/venues/${venueId}`);
+  return data;
+}
+
+export async function addVenueMenuItem(venueId: string, item: Partial<MenuItem>) {
+  const { data } = await api.post(`/venues/${venueId}/menu-items`, item);
+  return data as { item: MenuItem };
+}
+
+export async function patchMenuItem(itemId: string, payload: Partial<MenuItem>) {
+  const { data } = await api.patch(`/menu-items/${itemId}`, payload);
+  return data as { item: MenuItem };
+}
+
+export async function removeMenuItem(itemId: string) {
+  const { data } = await api.delete(`/menu-items/${itemId}`);
+  return data;
 }
