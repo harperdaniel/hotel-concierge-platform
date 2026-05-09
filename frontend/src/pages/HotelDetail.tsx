@@ -111,13 +111,13 @@ export default function HotelDetail() {
         <h1 className="text-2xl font-bold text-gray-900 mt-2">{hotel.name}</h1>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+      {/* Tabs (horizontal scroll on mobile) */}
+      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg overflow-x-auto -mx-1 px-1">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition ${
+            className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition shrink-0 ${
               activeTab === tab.key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
@@ -129,8 +129,8 @@ export default function HotelDetail() {
 
       {/* Tab: Info */}
       {activeTab === 'info' && (
-        <div className="bg-white rounded-xl border p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Hotel Name</label>
               <input value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
@@ -162,9 +162,9 @@ export default function HotelDetail() {
       {/* Tab: Knowledge */}
       {activeTab === 'knowledge' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-xl border p-6 space-y-4">
+          <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
             <h3 className="font-semibold text-gray-900">Add Knowledge</h3>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <select
                 value={newKnowledgeCat}
                 onChange={(e) => setNewKnowledgeCat(e.target.value)}
@@ -183,7 +183,7 @@ export default function HotelDetail() {
               />
               <button
                 onClick={handleAddKnowledge}
-                className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm"
+                className="flex items-center justify-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm"
               >
                 <Plus size={16} /> Add
               </button>
@@ -204,9 +204,9 @@ export default function HotelDetail() {
       {/* Tab: Menu */}
       {activeTab === 'menu' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-xl border p-6 space-y-4">
+          <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
             <h3 className="font-semibold text-gray-900">Add Menu Item</h3>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <input
                 value={newMenuItem.name}
                 onChange={(e) => setNewMenuItem({ ...newMenuItem, name: e.target.value })}
@@ -248,13 +248,13 @@ export default function HotelDetail() {
 
           <div className="space-y-2">
             {hotel.menuItems?.map((item: MenuItem) => (
-              <div key={item.id} className="bg-white rounded-xl border p-4 flex items-center justify-between">
-                <div>
+              <div key={item.id} className="bg-white rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div className="min-w-0 flex-1">
                   <span className="text-xs font-medium bg-gray-100 px-2 py-1 rounded text-gray-600">{item.category}</span>
                   <span className="ml-2 font-medium text-gray-900">{item.name}</span>
-                  {item.description && <span className="text-sm text-gray-500 ml-2">— {item.description}</span>}
+                  {item.description && <p className="text-sm text-gray-500 mt-1">{item.description}</p>}
                 </div>
-                <span className="font-semibold text-gray-900">{(item.price / 100).toFixed(2)} NOK</span>
+                <span className="font-semibold text-gray-900 shrink-0">{(item.price / 100).toFixed(2)} NOK</span>
               </div>
             ))}
           </div>
@@ -268,12 +268,12 @@ export default function HotelDetail() {
             <p className="text-gray-400 text-center py-8">No services configured yet.</p>
           ) : (
             hotel.services?.map((service: Service) => (
-              <div key={service.id} className="bg-white rounded-xl border p-4 flex items-center justify-between">
-                <div>
+              <div key={service.id} className="bg-white rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div className="min-w-0 flex-1">
                   <p className="font-medium text-gray-900">{service.name}</p>
                   {service.description && <p className="text-sm text-gray-500">{service.description}</p>}
                 </div>
-                <div className="text-right">
+                <div className="sm:text-right shrink-0">
                   {service.price && <p className="font-semibold">{(service.price / 100).toFixed(2)} NOK</p>}
                   {service.durationMin && <p className="text-xs text-gray-400">{service.durationMin} min</p>}
                 </div>
@@ -363,7 +363,7 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
   return (
     <div className="space-y-6">
       {/* Status & Actions */}
-      <div className="bg-white rounded-xl border p-6 space-y-4">
+      <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
         <h3 className="font-semibold text-gray-900 flex items-center gap-2">
           <Bot size={20} />
           Concierge Agent
@@ -419,18 +419,18 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
       {/* Agent Details */}
       {status?.provisioned && (
         <>
-          <div className="bg-white rounded-xl border p-6 space-y-3">
+          <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-3">
             <h3 className="font-semibold text-gray-900">Agent Details</h3>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="min-w-0">
                 <span className="text-gray-500">Agent ID:</span>
-                <code className="ml-2 bg-gray-100 px-2 py-0.5 rounded text-xs">
+                <code className="ml-2 bg-gray-100 px-2 py-0.5 rounded text-xs break-all">
                   {status.agentId}
                 </code>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="text-gray-500">Workspace:</span>
-                <code className="ml-2 bg-gray-100 px-2 py-0.5 rounded text-xs">
+                <code className="ml-2 bg-gray-100 px-2 py-0.5 rounded text-xs break-all">
                   {status.workspacePath}
                 </code>
               </div>
@@ -438,22 +438,22 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
           </div>
 
           {/* Guest Link */}
-          <div className="bg-white rounded-xl border p-6 space-y-4">
+          <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
             <h3 className="font-semibold text-gray-900">Guest Onboarding Link</h3>
             <p className="text-sm text-gray-500">
               Include this link in the welcome email to guests. Tapping it opens Telegram
               and starts the conversation with the concierge agent.
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 readOnly
                 value={status.telegramBot?.deepLink || ''}
-                className="flex-1 px-3 py-2 border rounded-lg text-sm bg-gray-50 font-mono text-gray-600"
+                className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm bg-gray-50 font-mono text-gray-600"
                 onClick={(e) => (e.target as HTMLInputElement).select()}
               />
               <button
                 onClick={copyDeepLink}
-                className="px-4 py-2 bg-gray-100 border rounded-lg hover:bg-gray-200 text-sm font-medium"
+                className="px-4 py-2 bg-gray-100 border rounded-lg hover:bg-gray-200 text-sm font-medium shrink-0"
               >
                 Copy
               </button>
@@ -461,9 +461,9 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
           </div>
 
           {/* Email Template */}
-          <div className="bg-white rounded-xl border p-6 space-y-4">
+          <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
             <h3 className="font-semibold text-gray-900">Welcome Email Template</h3>
-            <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600 font-mono whitespace-pre-wrap">
+            <div className="bg-gray-50 rounded-lg p-4 text-xs sm:text-sm text-gray-600 font-mono whitespace-pre-wrap break-words overflow-x-auto">
 {`Subject: Welcome to ${hotel.name} — Your Personal Concierge
 
 Dear Guest,

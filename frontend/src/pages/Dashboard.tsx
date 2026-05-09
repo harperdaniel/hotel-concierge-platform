@@ -17,7 +17,7 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Hotels</h1>
           <p className="text-gray-500 text-sm mt-1">
@@ -26,7 +26,7 @@ export default function Dashboard() {
         </div>
         <Link
           to="/hotels/new"
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+          className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm font-medium w-full sm:w-auto"
         >
           <Plus size={18} />
           Add Hotel
@@ -58,23 +58,23 @@ export default function Dashboard() {
               to={`/hotels/${hotel.id}`}
               className="bg-white rounded-xl border p-6 hover:shadow-md transition"
             >
-              <div className="flex items-start justify-between">
-                <div>
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div className="min-w-0">
                   <h2 className="text-lg font-semibold text-gray-900">{hotel.name}</h2>
                   {hotel.address && (
                     <p className="text-sm text-gray-500">{hotel.address}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-1 text-xs text-gray-400">
+                <div className="flex items-center gap-3 text-xs text-gray-400 shrink-0">
                   {hotel._count && (
                     <>
                       <span className="flex items-center gap-1" title="Menu items">
                         <Utensils size={14} /> {hotel._count.menuItems}
                       </span>
-                      <span className="flex items-center gap-1 ml-3" title="Knowledge entries">
+                      <span className="flex items-center gap-1" title="Knowledge entries">
                         <BookOpen size={14} /> {hotel._count.knowledgeEntries}
                       </span>
-                      <span className="flex items-center gap-1 ml-3" title="Bookings">
+                      <span className="flex items-center gap-1" title="Bookings">
                         <ClipboardList size={14} /> {hotel._count.bookings}
                       </span>
                     </>

@@ -33,7 +33,7 @@ export default function NewHotel() {
         <ArrowLeft size={16} /> Back to hotels
       </Link>
 
-      <form onSubmit={handleSubmit} className="max-w-lg bg-white rounded-xl border p-8 space-y-5">
+      <form onSubmit={handleSubmit} className="max-w-lg bg-white rounded-xl border p-4 sm:p-8 space-y-5">
         <h1 className="text-xl font-bold text-gray-900">Add Hotel</h1>
 
         {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg">{error}</div>}
@@ -61,7 +61,7 @@ export default function NewHotel() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
             <input
