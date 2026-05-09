@@ -32,6 +32,13 @@ export const updateHotelSchema = z.object({
   website: z.string().url().optional(),
   timezone: z.string().optional(),
   logoUrl: z.string().url().optional(),
+  // SMTP config (all optional; use empty string "" to clear)
+  smtpHost: z.string().optional(),
+  smtpPort: z.number().int().min(1).max(65535).optional(),
+  smtpUser: z.string().optional(),
+  smtpPass: z.string().optional(),
+  smtpFromName: z.string().optional(),
+  smtpFromEmail: z.union([z.string().email(), z.literal("")]).optional(),
 });
 
 // ── Knowledge ─────────────────────────────────────────

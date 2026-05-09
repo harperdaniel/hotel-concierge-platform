@@ -1,18 +1,59 @@
-import nodemailer from "nodemailer";
+import nodemailer, { Transporter } from "nodemailer";
 
-// ── SMTP transport ────────────────────────────────────
+// ── Hotel SMTP profile ────────────────────────────────
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.domeneshop.no",
-  port: parseInt(process.env.SMTP_PORT || "587", 10),
-  secure: false, // STARTTLS
-  auth: {
-    user: process.env.SMTP_USER || "",
-    pass: process.env.SMTP_PASS || "",
-  },
-});
+export interface HotelSmtpProfile {
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  smtpUser?: string | null;
+  smtpPass?: string | null;
+  smtpFromName?: string | null;
+  smtpFromEmail?: string | null;
+  name: string; // hotel name (used for the friendly From name when smtpFromName is empty)
+}
 
-const FROM = process.env.SMTP_FROM || `"Hotel Concierge" <${process.env.SMTP_USER}>`;
+// ── Build a transport for a hotel (or platform default) ───
+
+function buildTransport(hotel: HotelSmtpProfile | null): { transport: Transporter; from: string; usingDefault: boolean } {
+  // If hotel has full SMTP credentials, use them.
+  if (
+    hotel &&
+    hotel.smtpHost &&
+    hotel.smtpUser &&
+    hotel.smtpPass &&
+    hotel.smtpFromEmail
+  ) {
+    const transport = nodemailer.createTransport({
+      host: hotel.smtpHost,
+      port: hotel.smtpPort || 587,
+      secure: (hotel.smtpPort || 587) === 465, // 465 = implicit TLS, 587 = STARTTLS
+      auth: {
+        user: hotel.smtpUser,
+        pass: hotel.smtpPass,
+      },
+    });
+    const fromName = hotel.smtpFromName?.trim() || hotel.name;
+    const from = `"${escapeQuotes(fromName)}" <${hotel.smtpFromEmail}>`;
+    return { transport, from, usingDefault: false };
+  }
+
+  // Otherwise fall back to platform-wide SMTP from env.
+  const transport = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || "smtp.domeneshop.no",
+    port: parseInt(process.env.SMTP_PORT || "587", 10),
+    secure: false,
+    auth: {
+      user: process.env.SMTP_USER || "",
+      pass: process.env.SMTP_PASS || "",
+    },
+  });
+
+  const defaultFrom =
+    process.env.SMTP_FROM ||
+    `"${hotel?.name || "Hotel Concierge"}" <${process.env.SMTP_USER || "concierge@harperholding.com"}>`;
+
+  return { transport, from: defaultFrom, usingDefault: true };
+}
 
 // ── Welcome email content (HTML + plain text) ─────────
 
@@ -50,7 +91,6 @@ We hope you have a wonderful stay!
 — The ${hotelName} Team
 `;
 
-  // Inline-styled HTML for max email-client compatibility
   const html = `<!DOCTYPE html>
 <html>
   <head>
@@ -107,23 +147,40 @@ We hope you have a wonderful stay!
   return { subject, text, html };
 }
 
-// ── Send welcome email ────────────────────────────────
+// ── Send welcome email (per-hotel SMTP) ───────────────
 
-export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<{ messageId: string }> {
+export async function sendWelcomeEmail(
+  hotel: HotelSmtpProfile,
+  params: WelcomeEmailParams
+): Promise<{ messageId: string; usingDefaultSender: boolean; from: string }> {
   const { subject, text, html } = renderWelcomeEmail(params);
+  const { transport, from, usingDefault } = buildTransport(hotel);
 
-  const info = await transporter.sendMail({
-    from: FROM,
+  const info = await transport.sendMail({
+    from,
     to: params.to,
     subject,
     text,
     html,
+    replyTo: hotel.smtpFromEmail || undefined,
   });
 
-  return { messageId: info.messageId };
+  return { messageId: info.messageId, usingDefaultSender: usingDefault, from };
 }
 
-// ── HTML escape helpers ───────────────────────────────
+// ── Test SMTP connection (verify) ─────────────────────
+
+export async function verifyHotelSmtp(hotel: HotelSmtpProfile): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const { transport } = buildTransport(hotel);
+    await transport.verify();
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────
 
 function escapeHtml(s: string): string {
   return s
@@ -136,4 +193,8 @@ function escapeHtml(s: string): string {
 
 function escapeAttr(s: string): string {
   return escapeHtml(s);
+}
+
+function escapeQuotes(s: string): string {
+  return s.replace(/"/g, "'");
 }

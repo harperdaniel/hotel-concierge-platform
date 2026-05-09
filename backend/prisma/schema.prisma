@@ -35,6 +35,14 @@ model Hotel {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Per-hotel SMTP for sending welcome emails. If null, platform default is used.
+  smtpHost     String?
+  smtpPort     Int?
+  smtpUser     String?
+  smtpPass     String?  // TODO: encrypt at rest before going public
+  smtpFromName String?
+  smtpFromEmail String?
+
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 

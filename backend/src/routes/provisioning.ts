@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/auth";
 import { provisionHotel, deprovisionHotel, getProvisioningStatus } from "../services/provisioning";
-import { sendWelcomeEmail, renderWelcomeEmail } from "../services/email";
+import { sendWelcomeEmail, renderWelcomeEmail, verifyHotelSmtp } from "../services/email";
 import { prisma } from "../config/database";
 
 const router = Router();
@@ -76,17 +76,53 @@ router.post("/:id/welcome-email/test", async (req, res) => {
       return;
     }
 
-    const result = await sendWelcomeEmail({
-      to,
-      hotelName: hotel.name,
-      guestName,
-      telegramDeepLink: deepLink,
-    });
+    const result = await sendWelcomeEmail(
+      hotel,
+      {
+        to,
+        hotelName: hotel.name,
+        guestName,
+        telegramDeepLink: deepLink,
+      }
+    );
 
-    res.json({ sent: true, to, messageId: result.messageId });
+    res.json({
+      sent: true,
+      to,
+      messageId: result.messageId,
+      usingDefaultSender: result.usingDefaultSender,
+      from: result.from,
+    });
   } catch (err: any) {
     console.error("Test welcome email failed:", err);
     res.status(500).json({ error: err.message || "Failed to send test email" });
+  }
+});
+
+// ── Verify a hotel's SMTP settings ───────────────────────────
+
+router.post("/:id/smtp/verify", async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const hotel = await prisma.hotel.findFirst({
+      where: { id, userId: req.user!.userId },
+    });
+    if (!hotel) {
+      res.status(404).json({ error: "Hotel not found" });
+      return;
+    }
+    const result = await verifyHotelSmtp(hotel);
+    if (result.ok) {
+      res.json({
+        ok: true,
+        usingDefault:
+          !hotel.smtpHost || !hotel.smtpUser || !hotel.smtpPass || !hotel.smtpFromEmail,
+      });
+    } else {
+      res.status(400).json({ ok: false, error: result.error });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "SMTP verification failed" });
   }
 });
 

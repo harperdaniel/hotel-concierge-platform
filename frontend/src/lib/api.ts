@@ -49,6 +49,13 @@ export interface Hotel {
   createdAt: string;
   updatedAt: string;
   userId: string;
+  // SMTP
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  smtpUser?: string | null;
+  smtpFromName?: string | null;
+  smtpFromEmail?: string | null;
+  // smtpPass intentionally NOT in the type — never returned to the client
   _count?: { menuItems: number; services: number; knowledgeEntries: number; bookings: number };
   knowledgeEntries?: KnowledgeEntry[];
   menuItems?: MenuItem[];
@@ -139,7 +146,7 @@ export async function createHotel(hotel: Partial<Hotel>) {
   return data as { hotel: Hotel };
 }
 
-export async function updateHotel(id: string, hotel: Partial<Hotel>) {
+export async function updateHotel(id: string, hotel: Partial<Hotel> & { smtpPass?: string }) {
   const { data } = await api.put(`/hotels/${id}`, hotel);
   return data as { hotel: Hotel };
 }
@@ -203,4 +210,9 @@ export async function sendTestWelcomeEmail(hotelId: string, to: string, guestNam
 export async function getWelcomeEmailPreview(hotelId: string) {
   const { data } = await api.get(`/hotels/${hotelId}/welcome-email/preview`);
   return data as { subject: string; text: string; html: string };
+}
+
+export async function verifyHotelSmtp(hotelId: string) {
+  const { data } = await api.post(`/hotels/${hotelId}/smtp/verify`);
+  return data as { ok: boolean; usingDefault?: boolean; error?: string };
 }

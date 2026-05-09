@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { getHotel, updateHotel, createKnowledge, createMenuItem, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus } from '../lib/api';
-import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail } from 'lucide-react';
+import { getHotel, updateHotel, createKnowledge, createMenuItem, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus } from '../lib/api';
+import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server } from 'lucide-react';
 
 export default function HotelDetail() {
   const { id } = useParams<{ id: string }>();
@@ -460,9 +460,249 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
             </div>
           </div>
 
+          {/* SMTP Sender Config */}
+          <SmtpConfigPanel hotel={hotel} />
+
           {/* Email Template + Test send */}
           <WelcomeEmailPanel hotel={hotel} deepLink={status.telegramBot?.deepLink || ''} />
         </>
+      )}
+    </div>
+  );
+}
+
+// ── SMTP Config Panel ──────────────────────────────────────────
+
+function SmtpConfigPanel({ hotel }: { hotel: Hotel }) {
+  const [host, setHost] = useState(hotel.smtpHost || '');
+  const [port, setPort] = useState(hotel.smtpPort?.toString() || '587');
+  const [user, setUser] = useState(hotel.smtpUser || '');
+  const [pass, setPass] = useState(''); // never prefilled — leave blank to keep existing
+  const [fromName, setFromName] = useState(hotel.smtpFromName || '');
+  const [fromEmail, setFromEmail] = useState(hotel.smtpFromEmail || '');
+  const [saving, setSaving] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [message, setMessage] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null);
+  const [open, setOpen] = useState(!hotel.smtpHost); // open by default if not configured
+
+  const isConfigured = !!(hotel.smtpHost && hotel.smtpUser && hotel.smtpFromEmail);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setMessage(null);
+    try {
+      const payload: any = {
+        smtpHost: host || null,
+        smtpPort: port ? parseInt(port, 10) : null,
+        smtpUser: user || null,
+        smtpFromName: fromName || null,
+        smtpFromEmail: fromEmail || '',
+      };
+      // Only include password if user typed something. Empty = keep existing.
+      if (pass) payload.smtpPass = pass;
+      await updateHotel(hotel.id, payload);
+      setPass('');
+      setMessage({ kind: 'ok', text: '✅ SMTP settings saved' });
+      setTimeout(() => window.location.reload(), 700);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Save failed';
+      setMessage({ kind: 'err', text: `❌ ${msg}` });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleVerify() {
+    setVerifying(true);
+    setMessage(null);
+    try {
+      const res = await verifyHotelSmtp(hotel.id);
+      if (res.ok) {
+        setMessage({
+          kind: 'ok',
+          text: res.usingDefault
+            ? '✓ Platform default sender works (configure your own to send from your hotel address)'
+            : '✓ Your SMTP works! Test connection successful.',
+        });
+      } else {
+        setMessage({ kind: 'err', text: `❌ ${res.error || 'SMTP verification failed'}` });
+      }
+    } catch (err: any) {
+      setMessage({ kind: 'err', text: `❌ ${err?.response?.data?.error || err?.message || 'Verification failed'}` });
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function handleClear() {
+    if (!window.confirm('Clear your SMTP settings? Welcome emails will fall back to the platform default sender.')) return;
+    setSaving(true);
+    try {
+      await updateHotel(hotel.id, {
+        smtpHost: null,
+        smtpPort: null,
+        smtpUser: null,
+        smtpPass: '',
+        smtpFromName: null,
+        smtpFromEmail: '',
+      } as any);
+      // Force send empty smtpPass through:
+      await updateHotel(hotel.id, { smtpPass: '' } as any);
+      setMessage({ kind: 'info', text: 'Cleared. Reloading…' });
+      setTimeout(() => window.location.reload(), 600);
+    } catch (err: any) {
+      setMessage({ kind: 'err', text: `❌ ${err?.message || 'Failed to clear'}` });
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center justify-between w-full text-left"
+      >
+        <div className="flex items-center gap-2">
+          <Server size={18} className="text-gray-700" />
+          <h3 className="font-semibold text-gray-900">Email sender (SMTP)</h3>
+          {isConfigured ? (
+            <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded">configured</span>
+          ) : (
+            <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded">using default</span>
+          )}
+        </div>
+        <span className="text-sm text-gray-400">{open ? 'Hide' : 'Edit'}</span>
+      </button>
+
+      {!open && (
+        <p className="text-sm text-gray-500">
+          {isConfigured
+            ? `Sending from ${hotel.smtpFromEmail}`
+            : 'Welcome emails currently come from the platform default. Add your own SMTP to send from your hotel address.'}
+        </p>
+      )}
+
+      {open && (
+        <form onSubmit={handleSave} className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Configure your hotel's SMTP server so welcome emails come from your address. Common providers:
+            <strong> Gmail</strong> (smtp.gmail.com:587), <strong>Outlook 365</strong> (smtp.office365.com:587),
+            or your own domain's SMTP. Leave blank to use the platform default sender.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">From email *</label>
+              <input
+                type="email"
+                value={fromEmail}
+                onChange={(e) => setFromEmail(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="concierge@yourhotel.com"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">From name</label>
+              <input
+                type="text"
+                value={fromName}
+                onChange={(e) => setFromName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder={hotel.name}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">SMTP host</label>
+              <input
+                type="text"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="smtp.gmail.com"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
+              <input
+                type="number"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="587"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">SMTP user</label>
+              <input
+                type="text"
+                value={user}
+                onChange={(e) => setUser(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="your.email@yourhotel.com"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                SMTP password
+                {isConfigured && <span className="font-normal text-gray-400 ml-1">(leave blank to keep existing)</span>}
+              </label>
+              <input
+                type="password"
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder={isConfigured ? '••••••••' : 'app password or SMTP password'}
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-400">
+            Tip: For Gmail, use an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">App Password</a>, not your normal password.
+          </p>
+
+          {message && (
+            <div className={`text-sm p-2 rounded ${
+              message.kind === 'ok' ? 'bg-green-50 text-green-700' :
+              message.kind === 'err' ? 'bg-red-50 text-red-700' :
+              'bg-blue-50 text-blue-700'
+            }`}>
+              {message.text}
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+            >
+              {saving ? <Loader size={16} className="animate-spin" /> : <Save size={16} />}
+              {saving ? 'Saving…' : 'Save SMTP settings'}
+            </button>
+            <button
+              type="button"
+              onClick={handleVerify}
+              disabled={verifying}
+              className="flex items-center justify-center gap-2 bg-gray-100 border text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 disabled:opacity-50 text-sm font-medium"
+            >
+              {verifying ? <Loader size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+              {verifying ? 'Verifying…' : 'Verify connection'}
+            </button>
+            {isConfigured && (
+              <button
+                type="button"
+                onClick={handleClear}
+                disabled={saving}
+                className="flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg hover:bg-red-100 disabled:opacity-50 text-sm font-medium"
+              >
+                <Trash2 size={16} />
+                Clear
+              </button>
+            )}
+          </div>
+        </form>
       )}
     </div>
   );
@@ -502,8 +742,11 @@ function WelcomeEmailPanel({ hotel, deepLink }: { hotel: Hotel; deepLink: string
     setSending(true);
     setSendMessage(null);
     try {
-      const res = await sendTestWelcomeEmail(hotel.id, testEmail.trim(), guestName.trim() || undefined);
-      setSendMessage({ kind: 'ok', text: `✅ Test email sent to ${res.to}` });
+      const res = await sendTestWelcomeEmail(hotel.id, testEmail.trim(), guestName.trim() || undefined) as any;
+      const senderNote = res.usingDefaultSender
+        ? ' (sent from platform default — configure SMTP above to send from your hotel)'
+        : ` (sent from ${res.from})`;
+      setSendMessage({ kind: 'ok', text: `✅ Test email sent to ${res.to}${senderNote}` });
       setTestEmail('');
       setGuestName('');
     } catch (err: any) {

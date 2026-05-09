@@ -4,6 +4,14 @@ import { prisma } from "../config/database";
 // Helper to extract string param (Express 5 types)
 const param = (req: Request, name: string): string => req.params[name] as string;
 
+// Strip secret fields from hotel objects before sending to clients
+function sanitizeHotel<T extends Record<string, any> | null | undefined>(hotel: T): T {
+  if (!hotel) return hotel;
+  // Remove smtpPass and any other future secrets here
+  const { smtpPass: _smtpPass, ...rest } = hotel as any;
+  return rest as T;
+}
+
 // ── CRUD ──────────────────────────────────────────────
 
 export async function listHotels(req: Request, res: Response): Promise<void> {
@@ -14,7 +22,7 @@ export async function listHotels(req: Request, res: Response): Promise<void> {
     },
   });
 
-  res.json({ hotels });
+  res.json({ hotels: hotels.map(sanitizeHotel) });
 }
 
 export async function getHotel(req: Request, res: Response): Promise<void> {
@@ -34,7 +42,7 @@ export async function getHotel(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  res.json({ hotel });
+  res.json({ hotel: sanitizeHotel(hotel) });
 }
 
 export async function createHotel(req: Request, res: Response): Promise<void> {
@@ -42,7 +50,7 @@ export async function createHotel(req: Request, res: Response): Promise<void> {
     data: { ...req.body, userId: req.user!.userId },
   });
 
-  res.status(201).json({ hotel });
+  res.status(201).json({ hotel: sanitizeHotel(hotel) });
 }
 
 export async function updateHotel(req: Request, res: Response): Promise<void> {
@@ -57,12 +65,18 @@ export async function updateHotel(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // If smtpPass is empty string, treat as "don't change it" rather than overwriting with empty
+  const updateData = { ...req.body };
+  if (updateData.smtpPass === "") {
+    delete updateData.smtpPass;
+  }
+
   const hotel = await prisma.hotel.update({
     where: { id },
-    data: req.body,
+    data: updateData,
   });
 
-  res.json({ hotel });
+  res.json({ hotel: sanitizeHotel(hotel) });
 }
 
 export async function deleteHotel(req: Request, res: Response): Promise<void> {
