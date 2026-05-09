@@ -194,3 +194,13 @@ export async function getProvisionStatus(hotelId: string) {
   const { data } = await api.get(`/hotels/${hotelId}/provision/status`);
   return data as { status: ProvisionStatus };
 }
+
+export async function sendTestWelcomeEmail(hotelId: string, to: string, guestName?: string) {
+  const { data } = await api.post(`/hotels/${hotelId}/welcome-email/test`, { to, guestName });
+  return data as { sent: boolean; to: string; messageId: string };
+}
+
+export async function getWelcomeEmailPreview(hotelId: string) {
+  const { data } = await api.get(`/hotels/${hotelId}/welcome-email/preview`);
+  return data as { subject: string; text: string; html: string };
+}

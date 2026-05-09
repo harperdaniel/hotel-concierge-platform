@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { getHotel, updateHotel, createKnowledge, createMenuItem, provisionHotel, deprovisionHotel, getProvisionStatus, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus } from '../lib/api';
-import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { getHotel, updateHotel, createKnowledge, createMenuItem, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus } from '../lib/api';
+import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail } from 'lucide-react';
 
 export default function HotelDetail() {
   const { id } = useParams<{ id: string }>();
@@ -460,38 +460,139 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
             </div>
           </div>
 
-          {/* Email Template */}
-          <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
-            <h3 className="font-semibold text-gray-900">Welcome Email Template</h3>
-            <div className="bg-gray-50 rounded-lg p-4 text-xs sm:text-sm text-gray-600 font-mono whitespace-pre-wrap break-words overflow-x-auto">
-{`Subject: Welcome to ${hotel.name} — Your Personal Concierge
-
-Dear Guest,
-
-Welcome to ${hotel.name}! We're delighted to have you.
-
-Your personal concierge is ready to help. Simply tap the link below to start chatting on Telegram:
-
-${status.telegramBot?.deepLink || 'https://t.me/HotelConciergeBot'}
-
-Need a dinner reservation? Room service? Local recommendations? Just ask.
-
-We hope you have a wonderful stay!
-
-— The ${hotel.name} Team`}
-            </div>
-            <button
-              onClick={() => {
-                const text = document.querySelector('.bg-gray-50.rounded-lg')?.textContent;
-                if (text) navigator.clipboard.writeText(text);
-              }}
-              className="flex items-center gap-1 px-4 py-2 bg-gray-100 border rounded-lg hover:bg-gray-200 text-sm font-medium"
-            >
-              Copy Template
-            </button>
-          </div>
+          {/* Email Template + Test send */}
+          <WelcomeEmailPanel hotel={hotel} deepLink={status.telegramBot?.deepLink || ''} />
         </>
       )}
+    </div>
+  );
+}
+
+// ── Welcome Email Panel ────────────────────────────────────────
+
+function WelcomeEmailPanel({ hotel, deepLink }: { hotel: Hotel; deepLink: string }) {
+  const [preview, setPreview] = useState<{ subject: string; text: string; html: string } | null>(null);
+  const [testEmail, setTestEmail] = useState('');
+  const [guestName, setGuestName] = useState('');
+  const [sending, setSending] = useState(false);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [sendMessage, setSendMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    getWelcomeEmailPreview(hotel.id)
+      .then(setPreview)
+      .catch(() => {/* ignore */});
+  }, [hotel.id]);
+
+  function copy(text: string, label: string) {
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopyMessage(`✓ ${label} copied`);
+        setTimeout(() => setCopyMessage(null), 2500);
+      },
+      () => {
+        setCopyMessage('Failed to copy — select and copy manually');
+      },
+    );
+  }
+
+  async function handleSendTest(e: React.FormEvent) {
+    e.preventDefault();
+    if (!testEmail.trim()) return;
+    setSending(true);
+    setSendMessage(null);
+    try {
+      const res = await sendTestWelcomeEmail(hotel.id, testEmail.trim(), guestName.trim() || undefined);
+      setSendMessage({ kind: 'ok', text: `✅ Test email sent to ${res.to}` });
+      setTestEmail('');
+      setGuestName('');
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Failed to send';
+      setSendMessage({ kind: 'err', text: `❌ ${msg}` });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <Mail size={18} className="text-gray-700" />
+        <h3 className="font-semibold text-gray-900">Welcome Email</h3>
+      </div>
+      <p className="text-sm text-gray-500">
+        This email gets sent to your guest after they book. The big button opens Telegram, with a fallback for guests who don't have it yet.
+      </p>
+
+      {/* Test send form */}
+      <form onSubmit={handleSendTest} className="bg-gray-50 border rounded-lg p-4 space-y-3">
+        <h4 className="text-sm font-semibold text-gray-700">Test it now</h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input
+            type="email"
+            required
+            value={testEmail}
+            onChange={(e) => setTestEmail(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg text-sm"
+            placeholder="your@email.com"
+          />
+          <input
+            type="text"
+            value={guestName}
+            onChange={(e) => setGuestName(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg text-sm"
+            placeholder="Guest name (optional)"
+          />
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <button
+            type="submit"
+            disabled={sending || !testEmail.trim()}
+            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+          >
+            {sending ? <Loader size={16} className="animate-spin" /> : <Send size={16} />}
+            {sending ? 'Sending…' : 'Send test email'}
+          </button>
+          {sendMessage && (
+            <span className={`text-sm ${sendMessage.kind === 'ok' ? 'text-green-700' : 'text-red-600'}`}>
+              {sendMessage.text}
+            </span>
+          )}
+        </div>
+      </form>
+
+      {/* Preview */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold text-gray-700">Plain-text preview</h4>
+          <div className="flex items-center gap-2">
+            {copyMessage && <span className="text-xs text-green-700">{copyMessage}</span>}
+            <button
+              onClick={() => preview && copy(`Subject: ${preview.subject}\n\n${preview.text}`, 'Plain text')}
+              disabled={!preview}
+              className="px-3 py-1.5 bg-gray-100 border rounded-lg hover:bg-gray-200 text-xs font-medium disabled:opacity-50"
+            >
+              Copy text
+            </button>
+            <button
+              onClick={() => preview && copy(preview.html, 'HTML')}
+              disabled={!preview}
+              className="px-3 py-1.5 bg-gray-100 border rounded-lg hover:bg-gray-200 text-xs font-medium disabled:opacity-50"
+            >
+              Copy HTML
+            </button>
+          </div>
+        </div>
+        <div className="bg-gray-50 border rounded-lg p-4 text-xs sm:text-sm text-gray-700 font-mono whitespace-pre-wrap break-words">
+{preview ? `Subject: ${preview.subject}\n\n${preview.text}` : 'Loading preview…'}
+        </div>
+      </div>
+
+      {/* Deep link reference */}
+      <details className="text-sm">
+        <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Raw Telegram link (for embedding manually)</summary>
+        <code className="block mt-2 bg-gray-100 px-3 py-2 rounded text-xs break-all">{deepLink}</code>
+      </details>
     </div>
   );
 }
