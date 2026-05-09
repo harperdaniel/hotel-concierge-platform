@@ -317,15 +317,9 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
     setSuccess(null);
     try {
       const res = await provisionHotel(hotel.id);
-      setStatus({
-        provisioned: true,
-        workspaceExists: true,
-        agentId: res.agentId,
-        workspacePath: res.workspacePath,
-        telegramBot: { username: 'HotelConciergeBot', deepLink: res.telegramDeepLink },
-        updatedAt: new Date().toISOString(),
-      });
-      setSuccess('✅ Concierge agent provisioned successfully!');
+      // Refetch status to get the manager link too
+      await loadStatus();
+      setSuccess(`✅ Concierge agent provisioned${res.managerDeepLink ? ' (with manager bot)' : ''}!`);
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Provisioning failed');
     } finally {
@@ -439,10 +433,12 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
 
           {/* Guest Link */}
           <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
-            <h3 className="font-semibold text-gray-900">Guest Onboarding Link</h3>
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              💬 Guest onboarding link
+            </h3>
             <p className="text-sm text-gray-500">
               Include this link in the welcome email to guests. Tapping it opens Telegram
-              and starts the conversation with the concierge agent.
+              and starts the conversation with the concierge.
             </p>
             <div className="flex flex-col sm:flex-row gap-2">
               <input
@@ -459,6 +455,49 @@ function BotSetupTab({ hotel }: { hotel: Hotel }) {
               </button>
             </div>
           </div>
+
+          {/* Manager Link */}
+          {status.telegramBot?.managerDeepLink ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 sm:p-6 space-y-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                🔧 Manager bot link
+                <span className="text-xs font-normal bg-amber-100 text-amber-800 px-2 py-0.5 rounded">staff only</span>
+              </h3>
+              <p className="text-sm text-gray-700">
+                Tap this link on the same phone you use for managing the hotel. You'll talk to
+                a separate bot that helps you add menu items, services, and knowledge through chat.
+                Don't share this link with guests.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  readOnly
+                  value={status.telegramBot.managerDeepLink}
+                  className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm bg-white font-mono text-gray-700"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <a
+                  href={status.telegramBot.managerDeepLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-4 py-2 bg-amber-600 text-white border rounded-lg hover:bg-amber-700 text-sm font-medium shrink-0 text-center"
+                >
+                  Open in Telegram
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-gray-50 border rounded-xl p-4 sm:p-6">
+              <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+                🔧 Manager bot link
+                <span className="text-xs font-normal bg-gray-200 text-gray-600 px-2 py-0.5 rounded">not configured</span>
+              </h3>
+              <p className="text-sm text-gray-500 mt-2">
+                The platform admin hasn't set up the manager bot yet. Once a manager bot is
+                registered, hotels will be able to add menus and services through chat instead
+                of the dashboard form. Re-provisioning the agent will then surface the link here.
+              </p>
+            </div>
+          )}
 
           {/* SMTP Sender Config */}
           <SmtpConfigPanel hotel={hotel} />

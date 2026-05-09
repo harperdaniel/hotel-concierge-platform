@@ -183,13 +183,24 @@ export interface ProvisionStatus {
   workspaceExists: boolean;
   agentId: string | null;
   workspacePath: string | null;
-  telegramBot: { username: string; deepLink: string } | null;
+  telegramBot: {
+    username: string;
+    deepLink: string;
+    managerUsername?: string | null;
+    managerDeepLink?: string | null;
+  } | null;
   updatedAt: string | null;
 }
 
 export async function provisionHotel(hotelId: string) {
   const { data } = await api.post(`/hotels/${hotelId}/provision`);
-  return data as { provisioned: boolean; agentId: string; workspacePath: string; telegramDeepLink: string };
+  return data as {
+    provisioned: boolean;
+    agentId: string;
+    workspacePath: string;
+    telegramDeepLink: string;
+    managerDeepLink: string | null;
+  };
 }
 
 export async function deprovisionHotel(hotelId: string) {

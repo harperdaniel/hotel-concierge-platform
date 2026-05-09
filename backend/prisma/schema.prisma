@@ -128,6 +128,11 @@ model TelegramBot {
   webhookUrl  String?
   active      Boolean @default(true)
 
+  // Manager-side deep link & staff bot username
+  managerBotUsername String?
+  managerDeepLink    String?
+  staffToken         String?
+
   hotelId String @unique
   hotel   Hotel  @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 

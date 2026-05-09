@@ -7,6 +7,7 @@ import authRoutes from "./routes/auth";
 import hotelRoutes from "./routes/hotels";
 import guestRoutes from "./routes/guest";
 import provisioningRoutes from "./routes/provisioning";
+import managerRoutes from "./routes/manager";
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/hotels", hotelRoutes);
 app.use("/api/guest", guestRoutes);
 app.use("/api/hotels", provisioningRoutes);
+app.use("/api/manager", managerRoutes);
 
 // ── Health Check ──────────────────────────────────────
 app.get("/api/health", (_req, res) => {
