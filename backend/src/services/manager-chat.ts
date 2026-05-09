@@ -291,7 +291,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "update_hotel_info",
-      description: "Update the hotel's basic info (name, address, phone, email, website, timezone).",
+      description: "Update the hotel's basic info: name, address, phone, email, website, timezone, OR the conciergeName (the human name that the guest concierge uses when speaking with guests). Default conciergeName is 'Alfred Pennyworth'.",
       parameters: {
         type: "object",
         properties: {
@@ -301,6 +301,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           email: { type: "string" },
           website: { type: "string" },
           timezone: { type: "string" },
+          conciergeName: { type: "string", description: "The human name the guest concierge uses (e.g. 'Alfred Pennyworth', 'Sofie Larsen')." },
         },
       },
     },
@@ -565,7 +566,7 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
     }
 
     case "update_hotel_info": {
-      const allowed = ["name", "address", "phone", "email", "website", "timezone"];
+      const allowed = ["name", "address", "phone", "email", "website", "timezone", "conciergeName"];
       const updates: Record<string, any> = {};
       for (const k of allowed) if (k in args) updates[k] = args[k];
       if (Object.keys(updates).length === 0) return { error: "No updates" };

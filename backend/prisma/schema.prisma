@@ -54,6 +54,10 @@ model Hotel {
   hasTransfers    Boolean @default(false)
   petFriendly     Boolean @default(false)
 
+  // The concierge's *human* name as guests will see it. The guest concierge
+  // ALWAYS behaves as this human and never reveals it's an AI.
+  conciergeName String @default("Alfred Pennyworth")
+
   // Structured details for the simpler facilities (knowledge-style fields
   // displayed on the Facilities tab and pulled into the concierge context)
   spaHours         String?

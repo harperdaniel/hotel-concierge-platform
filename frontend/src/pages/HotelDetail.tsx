@@ -24,6 +24,7 @@ export default function HotelDetail() {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [hotelEmail, setHotelEmail] = useState('');
+  const [conciergeName, setConciergeName] = useState('');
 
   // New knowledge
   const [newKnowledgeCat, setNewKnowledgeCat] = useState('general');
@@ -45,6 +46,7 @@ export default function HotelDetail() {
       setAddress(res.hotel.address || '');
       setPhone(res.hotel.phone || '');
       setHotelEmail(res.hotel.email || '');
+      setConciergeName(res.hotel.conciergeName || 'Alfred Pennyworth');
     } catch (err) {
       console.error(err);
     } finally {
@@ -56,7 +58,7 @@ export default function HotelDetail() {
     if (!id) return;
     setSaving(true);
     try {
-      const res = await updateHotel(id, { name, address, phone, email: hotelEmail });
+      const res = await updateHotel(id, { name, address, phone, email: hotelEmail, conciergeName: conciergeName.trim() || 'Alfred Pennyworth' });
       setHotel(res.hotel);
     } finally {
       setSaving(false);
@@ -159,25 +161,50 @@ export default function HotelDetail() {
 
       {/* Tab: Info */}
       {activeTab === 'info' && (
-        <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Hotel Name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input value={hotelEmail} onChange={(e) => setHotelEmail(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-              <input value={address} onChange={(e) => setAddress(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border p-4 sm:p-6 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Hotel Name</label>
+                <input value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input value={hotelEmail} onChange={(e) => setHotelEmail(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                <input value={address} onChange={(e) => setAddress(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+              </div>
             </div>
           </div>
+
+          {/* Concierge persona — critical UX choice for the hotel owner */}
+          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4 sm:p-6 space-y-3">
+            <div className="flex items-start gap-3">
+              <UserCircle size={22} className="text-emerald-600 mt-0.5" />
+              <div className="flex-1">
+                <h4 className="font-semibold text-gray-900">Concierge name</h4>
+                <p className="text-sm text-gray-600">
+                  This is the human name your guests will see. The concierge always behaves as a real person with this name — it never mentions being AI, a bot, or anything technical.
+                </p>
+              </div>
+            </div>
+            <input
+              value={conciergeName}
+              onChange={(e) => setConciergeName(e.target.value)}
+              className="w-full px-3 py-2 border rounded-lg bg-white"
+              placeholder="Alfred Pennyworth"
+            />
+            <p className="text-xs text-gray-500">
+              Default is <em>Alfred Pennyworth</em>. You can pick any human name you want — something that fits your hotel's vibe (Sofie Larsen, James, Maria, etc.).
+            </p>
+          </div>
+
           <button
             onClick={handleSaveInfo}
             disabled={saving}
@@ -2140,10 +2167,11 @@ function FacilityEditModal({
 // ── Guest demo panel (shows the manager what a guest sees) ────────────
 
 function GuestDemoPanel({ hotel, onClose }: { hotel: Hotel; onClose: () => void }) {
+  const conciergeName = hotel.conciergeName || 'Alfred Pennyworth';
   const [messages, setMessages] = useState<ChatMsg[]>([
     {
       role: 'assistant',
-      content: `Welcome to **${hotel.name}**! 👋\n\nI'm your AI concierge. How can I help — a dinner reservation, room service, or a question about the hotel?`,
+      content: `Welcome to **${hotel.name}**! 👋\n\nI'm ${conciergeName}, your concierge. How can I help — a dinner reservation, room service, or something else?`,
     },
   ]);
   const [input, setInput] = useState('');
@@ -2199,7 +2227,7 @@ function GuestDemoPanel({ hotel, onClose }: { hotel: Hotel; onClose: () => void 
         <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b bg-white">
           <div className="flex items-center gap-2 min-w-0">
             <UserCircle size={18} className="text-emerald-600 shrink-0" />
-            <h3 className="font-semibold text-gray-900 shrink-0">Guest experience</h3>
+            <h3 className="font-semibold text-gray-900 shrink-0">{conciergeName}</h3>
             <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded shrink-0">DEMO</span>
           </div>
           <button onClick={onClose} className="shrink-0 p-2 -mr-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg" aria-label="Close demo">
@@ -2209,7 +2237,7 @@ function GuestDemoPanel({ hotel, onClose }: { hotel: Hotel; onClose: () => void 
 
         {/* Demo banner (fixed) */}
         <div className="shrink-0 px-4 py-2 bg-emerald-50 border-b border-emerald-200 text-xs text-emerald-800">
-          You're chatting as a guest of <strong>{hotel.name}</strong>. Bookings you make here are not real — this is just a preview of what your guests will experience.
+          You're chatting with <strong>{conciergeName}</strong> at <strong>{hotel.name}</strong>. Bookings made here are previews only.
         </div>
 
         {/* Messages (only scroll area) */}

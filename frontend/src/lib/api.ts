@@ -70,6 +70,8 @@ export interface Hotel {
   smtpUser?: string | null;
   smtpFromName?: string | null;
   smtpFromEmail?: string | null;
+  // The human name the guest concierge uses (default 'Alfred Pennyworth')
+  conciergeName?: string;
   // Facility flags
   hasRestaurant?: boolean;
   hasRoomService?: boolean;

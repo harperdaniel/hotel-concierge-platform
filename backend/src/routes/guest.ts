@@ -15,9 +15,11 @@ router.get("/hotels/:id/data", async (req, res) => {
       phone: true,
       email: true,
       timezone: true,
+      conciergeName: true,
       knowledgeEntries: true,
       menuItems: { where: { available: true }, orderBy: { category: "asc" } },
       services: true,
+      venues: { include: { _count: { select: { menuItems: true } } } },
     },
   });
 
@@ -83,7 +85,7 @@ router.post("/identify", async (req, res) => {
 
     const hotel = await prisma.hotel.findUnique({
       where: { id: hotelId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, conciergeName: true },
     });
 
     if (!hotel) {
@@ -91,7 +93,7 @@ router.post("/identify", async (req, res) => {
       return;
     }
 
-    res.json({ hotelId: hotel.id, hotelName: hotel.name });
+    res.json({ hotelId: hotel.id, hotelName: hotel.name, conciergeName: hotel.conciergeName });
   } catch {
     res.status(400).json({ error: "Invalid start parameter" });
   }

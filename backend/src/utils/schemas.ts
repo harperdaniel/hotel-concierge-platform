@@ -47,6 +47,7 @@ export const updateHotelSchema = z.object({
   website: z.string().url().optional(),
   timezone: z.string().optional(),
   logoUrl: z.string().url().optional(),
+  conciergeName: z.string().min(1).max(80).optional(),
   // SMTP config (all optional; use empty string "" to clear)
   smtpHost: z.string().optional(),
   smtpPort: z.number().int().min(1).max(65535).optional(),
