@@ -87,7 +87,7 @@ export default function HotelDetail() {
 
   const tabs = [
     { key: 'facilities', label: 'Overview', icon: Building2 },
-    { key: 'chat', label: 'AI Chat', icon: Sparkles },
+    { key: 'chat', label: 'AI Manager', icon: Sparkles },
     { key: 'menu', label: 'Restaurants', icon: Utensils },
     { key: 'spa', label: 'Spa', icon: Waves },
     { key: 'services', label: 'Services', icon: ConciergeBell },
@@ -319,7 +319,7 @@ function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged:
   const [staffToken, setStaffToken] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([
-    { role: 'assistant', content: `Hi! I'm here to help you set up **${hotel.name}**. I can add menu items, services, knowledge entries, or update your hotel info — just tell me what you want to do.\n\nFor example, try:\n- "Add Ribbe, 320 kr, mains, with crispy crackling"\n- "Add a 60-minute spa massage for 890 kr"\n- "Add a policy: check-in is from 15:00"\n- "What's on my menu?"\n\n🎙️ Tap the mic button to speak instead of type — try Norwegian or English.` },
+    { role: 'assistant', content: buildOpeningMessage(hotel) },
   ]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -377,9 +377,7 @@ function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged:
   }
 
   function clearConversation() {
-    setMessages([
-      { role: 'assistant', content: `Reset! I'm ready to help with ${hotel.name}. What would you like to do?` },
-    ]);
+    setMessages([{ role: 'assistant', content: buildOpeningMessage(hotel) }]);
     setToolNotices([]);
   }
 
@@ -467,14 +465,14 @@ function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged:
       <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
         <div className="flex items-center gap-2">
           <Sparkles size={18} className="text-blue-600" />
-          <h3 className="font-semibold text-gray-900">AI Setup Assistant</h3>
+          <h3 className="font-semibold text-gray-900">AI Manager</h3>
           <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded">staff</span>
         </div>
         <button
           onClick={clearConversation}
           className="text-xs text-gray-500 hover:text-gray-700"
         >
-          Clear
+          Restart
         </button>
       </div>
 
@@ -587,6 +585,62 @@ function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged:
       </form>
     </div>
   );
+}
+
+// ── Build a personalized opening message based on what's missing ─────
+
+function buildOpeningMessage(hotel: Hotel): string {
+  const missing: string[] = [];
+  const venuesCount = (hotel.venues || []).length;
+  const menuCount = (hotel.menuItems || []).length;
+  const servicesCount = (hotel.services || []).length;
+  const knowledgeCount = (hotel.knowledgeEntries || []).length;
+
+  // Restaurants: enabled but no venues / no items
+  if (hotel.hasRestaurant && venuesCount === 0) missing.push('a restaurant or bar set up');
+  else if (hotel.hasRestaurant && menuCount === 0) missing.push('any menu items');
+
+  // Spa: enabled but no treatments/access
+  if (hotel.hasSpa) {
+    const spaItems = (hotel.services || []).filter((s: any) => s.category === 'spa_treatment' || s.category === 'spa_access').length;
+    if (spaItems === 0) missing.push('any spa treatments or access passes');
+    if (!hotel.spaHours) missing.push('spa hours');
+  }
+
+  // Inline facility details
+  if (hotel.hasPool && !hotel.poolHours) missing.push('pool hours');
+  if (hotel.hasGym && !hotel.gymHours) missing.push('gym hours');
+  if (hotel.hasBar && !hotel.barHours) missing.push('bar hours');
+  if (hotel.hasConference && !hotel.conferenceNotes) missing.push('conference details');
+  if (hotel.hasTransfers && !hotel.transferNotes) missing.push('transfer details');
+  if (hotel.petFriendly && !hotel.petPolicy) missing.push('a pet policy');
+
+  // Knowledge base
+  if (knowledgeCount === 0) missing.push('any knowledge entries (Wi-Fi, breakfast, parking, etc.)');
+
+  // No services and not even a restaurant — pretty bare
+  if (missing.length === 0 && servicesCount === 0 && menuCount === 0) {
+    missing.push('any items at all yet');
+  }
+
+  // Compose the message
+  const greeting = `Hi! I'm your AI Manager for **${hotel.name}**. 👋`;
+
+  if (missing.length === 0) {
+    return `${greeting}\n\nLooking good — your hotel has venues, menu items, services, and knowledge configured. I'm here whenever you want to add or update anything. Just tell me what you'd like to do!\n\nA few things you could try:\n- "Add a Negroni for 165 kr to the Sky Bar"\n- "Update breakfast hours to 06:30–10:30"\n- "Show me what's on my menu"\n\n🎙️ Tap the mic to speak instead of type — works in Norwegian or English.`;
+  }
+
+  // Build a friendly list of missing items
+  let missingList: string;
+  if (missing.length === 1) {
+    missingList = missing[0];
+  } else if (missing.length === 2) {
+    missingList = `${missing[0]} and ${missing[1]}`;
+  } else {
+    missingList = `${missing.slice(0, -1).join(', ')}, and ${missing[missing.length - 1]}`;
+  }
+
+  return `${greeting}\n\nI took a look at your setup and noticed you haven't added **${missingList}** yet.\n\nWant me to walk you through it? Just say *"yes"* and I'll ask the right questions — or feel free to jump to the relevant tab and do it yourself. **I'm here either way.** 😊\n\n🎙️ You can also speak instead of type — Norwegian or English.`;
 }
 
 function describeToolCall(tc: { name: string; args: any; result: any }): string {
