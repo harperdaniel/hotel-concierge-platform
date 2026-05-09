@@ -508,44 +508,58 @@ function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged:
       )}
 
       {/* Input */}
-      <form onSubmit={handleSend} className="border-t p-3 flex gap-2">
+      <form onSubmit={handleSend} className="border-t p-3 flex gap-2 items-stretch">
+        <button
+          type="button"
+          onClick={() => {
+            if (!speechSupported) {
+              setVoiceError(
+                'Voice input is not available in this browser. Open the dashboard in Safari or Chrome (not the Telegram in-app browser) to use the mic.'
+              );
+              return;
+            }
+            toggleRecording();
+          }}
+          disabled={!staffToken || sending}
+          title={
+            !speechSupported
+              ? 'Voice not supported in this browser'
+              : recording
+              ? 'Stop recording'
+              : `Speak (${voiceLang === 'nb-NO' ? 'Norwegian' : 'English'})`
+          }
+          className={`flex items-center justify-center px-3 rounded-lg shrink-0 ${
+            recording
+              ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
+              : speechSupported
+              ? 'bg-gray-100 border text-gray-700 hover:bg-gray-200'
+              : 'bg-gray-50 border text-gray-400'
+          } disabled:opacity-50`}
+        >
+          {recording ? <MicOff size={18} /> : <Mic size={18} />}
+        </button>
         {speechSupported && (
-          <>
-            <button
-              type="button"
-              onClick={toggleRecording}
-              disabled={!staffToken || sending}
-              title={recording ? 'Stop recording' : `Start voice (${voiceLang === 'nb-NO' ? 'Norwegian' : 'English'})`}
-              className={`flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium shrink-0 ${
-                recording
-                  ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
-                  : 'bg-gray-100 border text-gray-700 hover:bg-gray-200'
-              } disabled:opacity-50`}
-            >
-              {recording ? <MicOff size={18} /> : <Mic size={18} />}
-            </button>
-            <button
-              type="button"
-              onClick={() => setVoiceLang(voiceLang === 'nb-NO' ? 'en-US' : 'nb-NO')}
-              title="Toggle voice language"
-              className="hidden sm:flex items-center justify-center px-2 py-2 rounded-lg text-xs font-medium bg-gray-50 border text-gray-600 hover:bg-gray-100 shrink-0"
-            >
-              {voiceLang === 'nb-NO' ? '🇳🇴' : '🇬🇧'}
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => setVoiceLang(voiceLang === 'nb-NO' ? 'en-US' : 'nb-NO')}
+            title={`Voice language: ${voiceLang === 'nb-NO' ? 'Norwegian' : 'English'} — tap to switch`}
+            className="hidden sm:flex items-center justify-center px-2 rounded-lg text-base bg-gray-50 border text-gray-600 hover:bg-gray-100 shrink-0"
+          >
+            {voiceLang === 'nb-NO' ? '🇳🇴' : '🇬🇧'}
+          </button>
         )}
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={!staffToken || sending}
-          placeholder="Tell me what to add or update… (or tap 🎙️ to speak)"
+          placeholder="Type or speak…"
           className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
         />
         <button
           type="submit"
           disabled={!staffToken || sending || !input.trim()}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium shrink-0"
+          className="flex items-center gap-2 bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium shrink-0"
         >
           <Send size={16} />
           <span className="hidden sm:inline">Send</span>
