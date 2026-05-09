@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../config/database";
+import { managerChat } from "../services/manager-chat";
 
 const router = Router();
 
@@ -260,6 +261,39 @@ router.delete("/knowledge/:id", async (req: any, res) => {
   }
   await prisma.knowledgeEntry.delete({ where: { id } });
   res.json({ deleted: true });
+});
+
+// ── Web chat (mirrors the Telegram manager bot) ──────────────────────────
+//
+// POST /api/manager/chat
+// Body: { messages: [{ role: 'user' | 'assistant', content: string }, ...] }
+//
+// Calls DeepSeek with the same SOUL.md as the Telegram manager bot, plus tool-calling.
+// The model can directly add menu items, services, knowledge, etc.
+
+router.post("/chat", async (req: any, res) => {
+  try {
+    const { messages } = req.body || {};
+    if (!Array.isArray(messages)) {
+      res.status(400).json({ error: "messages array required" });
+      return;
+    }
+    // Sanitize: only role + content, only user/assistant
+    const cleanHistory = messages
+      .filter((m: any) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+      .map((m: any) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+    if (cleanHistory.length === 0) {
+      res.status(400).json({ error: "At least one message required" });
+      return;
+    }
+
+    const result = await managerChat(req.hotel.id, cleanHistory);
+    res.json(result);
+  } catch (err: any) {
+    console.error("Manager chat failed:", err);
+    res.status(500).json({ error: err.message || "Chat failed" });
+  }
 });
 
 export default router;

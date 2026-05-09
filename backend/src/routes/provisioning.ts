@@ -100,6 +100,28 @@ router.post("/:id/welcome-email/test", async (req, res) => {
   }
 });
 
+// ── Get the hotel's staff token (dashboard owner only) ────────────────
+//
+// Used by the in-dashboard web chat to call /api/manager/chat directly.
+// Returns 404 if the hotel hasn't been provisioned yet.
+
+router.get("/:id/staff-token", async (req, res) => {
+  const id = req.params.id as string;
+  const hotel = await prisma.hotel.findFirst({
+    where: { id, userId: req.user!.userId },
+  });
+  if (!hotel) {
+    res.status(404).json({ error: "Hotel not found" });
+    return;
+  }
+  const bot = await prisma.telegramBot.findUnique({ where: { hotelId: id } });
+  if (!bot?.staffToken) {
+    res.status(404).json({ error: "Hotel must be provisioned before chat is available" });
+    return;
+  }
+  res.json({ staffToken: bot.staffToken });
+});
+
 // ── Verify a hotel's SMTP settings ───────────────────────────
 
 router.post("/:id/smtp/verify", async (req, res) => {

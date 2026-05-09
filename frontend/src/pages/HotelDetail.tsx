@@ -1,15 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { getHotel, updateHotel, createKnowledge, createMenuItem, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus } from '../lib/api';
-import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server } from 'lucide-react';
+import { getHotel, updateHotel, createKnowledge, createMenuItem, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus, type ChatMsg } from '../lib/api';
+import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles } from 'lucide-react';
 
 export default function HotelDetail() {
   const { id } = useParams<{ id: string }>();
   const [hotel, setHotel] = useState<Hotel | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'info' | 'knowledge' | 'menu' | 'services' | 'bots'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'knowledge' | 'menu' | 'services' | 'bots' | 'chat'>('info');
 
   // Form state
   const [name, setName] = useState('');
@@ -96,6 +96,7 @@ export default function HotelDetail() {
 
   const tabs = [
     { key: 'info', label: 'Info', icon: Save },
+    { key: 'chat', label: 'AI Chat', icon: Sparkles },
     { key: 'knowledge', label: 'Knowledge', icon: BookOpen },
     { key: 'menu', label: 'Menu', icon: Utensils },
     { key: 'services', label: 'Services', icon: ConciergeBell },
@@ -283,10 +284,185 @@ export default function HotelDetail() {
         </div>
       )}
 
+      {/* Tab: AI Chat */}
+      {activeTab === 'chat' && <ManagerChatTab hotel={hotel} onDataChanged={loadHotel} />}
+
       {/* Tab: Bot Setup */}
       {activeTab === 'bots' && <BotSetupTab hotel={hotel} />}
     </Layout>
   );
+}
+
+// ── Manager Chat Tab ─────────────────────────────────────────
+
+function ManagerChatTab({ hotel, onDataChanged }: { hotel: Hotel; onDataChanged: () => void }) {
+  const [staffToken, setStaffToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMsg[]>([
+    { role: 'assistant', content: `Hi! I'm here to help you set up **${hotel.name}**. I can add menu items, services, knowledge entries, or update your hotel info — just tell me what you want to do.\n\nFor example, try:\n- "Add Ribbe, 320 kr, mains, with crispy crackling"\n- "Add a 60-minute spa massage for 890 kr"\n- "Add a policy: check-in is from 15:00"\n- "What's on my menu?"` },
+  ]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [toolNotices, setToolNotices] = useState<string[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    getStaffToken(hotel.id)
+      .then((res) => setStaffToken(res.staffToken))
+      .catch((err) => {
+        const msg = err?.response?.data?.error || 'Could not get staff token. Provision the agent first.';
+        setTokenError(msg);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hotel.id]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, toolNotices]);
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || !staffToken || sending) return;
+
+    const next: ChatMsg[] = [...messages, { role: 'user', content: trimmed }];
+    setMessages(next);
+    setInput('');
+    setSending(true);
+    setToolNotices([]);
+
+    try {
+      const res = await managerChat(staffToken, next);
+      const notices = res.toolCalls.map((tc) => describeToolCall(tc));
+      setToolNotices(notices);
+      setMessages((prev) => [...prev, { role: 'assistant', content: res.reply || '(no reply)' }]);
+      // If any mutation happened, reload the hotel so other tabs stay in sync
+      if (res.toolCalls.some((tc) => tc.name !== 'get_hotel_state')) {
+        onDataChanged();
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Chat failed';
+      setMessages((prev) => [...prev, { role: 'assistant', content: `⚠️ ${msg}` }]);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function clearConversation() {
+    setMessages([
+      { role: 'assistant', content: `Reset! I'm ready to help with ${hotel.name}. What would you like to do?` },
+    ]);
+    setToolNotices([]);
+  }
+
+  if (tokenError) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-sm text-amber-800">
+        <p className="font-semibold mb-1">Chat unavailable</p>
+        <p>{tokenError}</p>
+        <p className="mt-2">Go to <strong>Bot Setup</strong> and click “Provision Agent” to enable the AI chat.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-12rem)] min-h-[400px] bg-white border rounded-xl overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
+        <div className="flex items-center gap-2">
+          <Sparkles size={18} className="text-blue-600" />
+          <h3 className="font-semibold text-gray-900">AI Setup Assistant</h3>
+          <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded">staff</span>
+        </div>
+        <button
+          onClick={clearConversation}
+          className="text-xs text-gray-500 hover:text-gray-700"
+        >
+          Clear
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap break-words ${
+                m.role === 'user'
+                  ? 'bg-blue-600 text-white rounded-br-sm'
+                  : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+              }`}
+            >
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {sending && (
+          <div className="flex justify-start">
+            <div className="bg-gray-100 text-gray-500 rounded-2xl rounded-bl-sm px-4 py-2 text-sm flex items-center gap-2">
+              <Loader size={14} className="animate-spin" />
+              thinking…
+            </div>
+          </div>
+        )}
+        {toolNotices.length > 0 && !sending && (
+          <div className="flex justify-start">
+            <div className="bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-lg px-3 py-2 max-w-[85%]">
+              {toolNotices.map((n, i) => <div key={i}>✨ {n}</div>)}
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <form onSubmit={handleSend} className="border-t p-3 flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          disabled={!staffToken || sending}
+          placeholder="Tell me what to add or update…"
+          className="flex-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+        />
+        <button
+          type="submit"
+          disabled={!staffToken || sending || !input.trim()}
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+        >
+          <Send size={16} />
+          <span className="hidden sm:inline">Send</span>
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function describeToolCall(tc: { name: string; args: any; result: any }): string {
+  const r = tc.result || {};
+  if (r.error) return `❌ ${tc.name} failed: ${r.error}`;
+  switch (tc.name) {
+    case 'add_menu_item':
+      return `Added menu item: ${tc.args.name}`;
+    case 'add_menu_items_bulk':
+      return `Added ${r.added} menu items`;
+    case 'add_service':
+      return `Added service: ${tc.args.name}`;
+    case 'add_knowledge':
+      return `Added ${tc.args.category} knowledge entry`;
+    case 'delete_menu_item':
+      return `Deleted a menu item`;
+    case 'delete_service':
+      return `Deleted a service`;
+    case 'delete_knowledge':
+      return `Deleted a knowledge entry`;
+    case 'update_hotel_info':
+      return `Updated hotel info`;
+    case 'get_hotel_state':
+      return `Looked up current hotel state`;
+    default:
+      return `Called ${tc.name}`;
+  }
 }
 
 // ── Bot Setup Tab Component ────────────────────────────

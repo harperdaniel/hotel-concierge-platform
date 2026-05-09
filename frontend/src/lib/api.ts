@@ -227,3 +227,33 @@ export async function verifyHotelSmtp(hotelId: string) {
   const { data } = await api.post(`/hotels/${hotelId}/smtp/verify`);
   return data as { ok: boolean; usingDefault?: boolean; error?: string };
 }
+
+// ── Manager chat (web-based) ──────────────────────────────────────
+
+export interface ChatMsg {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export async function managerChat(staffToken: string, messages: ChatMsg[]) {
+  // Note: this endpoint requires X-Staff-Token, not the JWT. We add it explicitly.
+  const { data } = await api.post(
+    '/manager/chat',
+    { messages },
+    { headers: { 'X-Staff-Token': staffToken } },
+  );
+  return data as {
+    reply: string;
+    toolCalls: { name: string; args: any; result: any }[];
+  };
+}
+
+export async function managerIdentify(startParam: string) {
+  const { data } = await api.post('/manager/identify', { startParam });
+  return data as { hotelId: string; hotelName: string; staffToken: string };
+}
+
+export async function getStaffToken(hotelId: string) {
+  const { data } = await api.get(`/hotels/${hotelId}/staff-token`);
+  return data as { staffToken: string };
+}
