@@ -36,6 +36,11 @@ const authLimiter = rateLimit({
 // ── Body Parsing ──────────────────────────────────────
 app.use(express.json({ limit: "10kb" }));
 
+// ── Health Check (registered BEFORE catch-all /api routers) ───────────
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 // ── Routes ────────────────────────────────────────────
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/hotels", hotelRoutes);
@@ -43,11 +48,6 @@ app.use("/api/guest", guestRoutes);
 app.use("/api/hotels", provisioningRoutes);
 app.use("/api/manager", managerRoutes);
 app.use("/api", venueRoutes); // /api/hotels/:id/venues, /api/venues/:id, /api/menu-items/:id
-
-// ── Health Check ──────────────────────────────────────
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
-});
 
 // ── 404 ───────────────────────────────────────────────
 app.use((_req, res) => {
