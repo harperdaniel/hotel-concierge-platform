@@ -11,7 +11,7 @@ export default function HotelDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'info' | 'facilities' | 'knowledge' | 'menu' | 'services' | 'spa' | 'bots' | 'chat'>(
-    searchParams.get('welcome') === '1' ? 'bots' : 'info'
+    searchParams.get('welcome') === '1' ? 'bots' : 'facilities'
   );
   const justCreated = searchParams.get('welcome') === '1';
 
@@ -86,14 +86,14 @@ export default function HotelDetail() {
   }
 
   const tabs = [
-    { key: 'info', label: 'Info', icon: Save },
+    { key: 'facilities', label: 'Overview', icon: Building2 },
     { key: 'chat', label: 'AI Chat', icon: Sparkles },
-    { key: 'facilities', label: 'Facilities', icon: Building2 },
     { key: 'menu', label: 'Restaurants', icon: Utensils },
     { key: 'spa', label: 'Spa', icon: Waves },
     { key: 'services', label: 'Services', icon: ConciergeBell },
     { key: 'knowledge', label: 'Knowledge', icon: BookOpen },
     { key: 'bots', label: 'Bot Setup', icon: Bot },
+    { key: 'info', label: 'Info', icon: Save },
   ] as const;
 
   return (
@@ -231,8 +231,8 @@ export default function HotelDetail() {
       {/* Tab: Spa (filtered services) */}
       {activeTab === 'spa' && <SpaTab hotel={hotel} />}
 
-      {/* Tab: Facilities (overview + inline edits) */}
-      {activeTab === 'facilities' && <FacilitiesTab hotel={hotel} onChanged={loadHotel} />}
+      {/* Tab: Facilities (overview dashboard) */}
+      {activeTab === 'facilities' && <FacilitiesTab hotel={hotel} onChanged={loadHotel} onJumpTab={(t) => setActiveTab(t as any)} />}
 
       {/* Tab: Bot Setup */}
       {activeTab === 'bots' && <BotSetupTab hotel={hotel} />}
@@ -1491,32 +1491,33 @@ function RestaurantsTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => v
   );
 }
 
-// ── Facilities Tab (overview + inline editors for unstructured facilities) ──
+// ── Facilities Tab (dashboard / overview) ────────────────────────────────
 
 const FACILITY_DEFS: {
   flagKey: keyof Hotel;
   label: string;
   icon: any;
-  type: 'tab' | 'inline'; // 'tab' = drill into another tab, 'inline' = edit here
+  type: 'tab' | 'inline';
   drillTab?: string;
   hoursField?: keyof Hotel;
   notesField?: keyof Hotel;
   policyField?: keyof Hotel;
   description: string;
+  accent: string; // tailwind text class for the icon color
 }[] = [
-  { flagKey: 'hasRestaurant', label: 'Restaurants & Bars', icon: Utensils, type: 'tab', drillTab: 'menu', description: 'Manage venues and menus' },
-  { flagKey: 'hasRoomService', label: 'Room service', icon: BedDouble, type: 'inline', description: 'In-room dining (uses items flagged for room service)' },
-  { flagKey: 'hasSpa', label: 'Spa', icon: Sparkles, type: 'tab', drillTab: 'spa', hoursField: 'spaHours', notesField: 'spaNotes', description: 'Treatments and access passes' },
-  { flagKey: 'hasPool', label: 'Pool / wellness', icon: Waves, type: 'inline', hoursField: 'poolHours', notesField: 'poolNotes', description: 'Pool, sauna, hot tub' },
-  { flagKey: 'hasGym', label: 'Gym', icon: Dumbbell, type: 'inline', hoursField: 'gymHours', notesField: 'gymNotes', description: 'Fitness room' },
-  { flagKey: 'hasBar', label: 'Bar / lounge', icon: Wine, type: 'inline', hoursField: 'barHours', notesField: 'barNotes', description: 'Drinks and snacks' },
-  { flagKey: 'hasConference', label: 'Conference', icon: Briefcase, type: 'inline', notesField: 'conferenceNotes', description: 'Meeting rooms, events' },
-  { flagKey: 'hasTransfers', label: 'Airport transfers', icon: Plane, type: 'inline', notesField: 'transferNotes', description: 'Pickup/dropoff service' },
-  { flagKey: 'petFriendly', label: 'Pet-friendly', icon: Dog, type: 'inline', policyField: 'petPolicy', description: 'Pet policy' },
+  { flagKey: 'hasRestaurant', label: 'Restaurants & Bars', icon: Utensils, type: 'tab', drillTab: 'menu', description: 'Venues and menus', accent: 'text-amber-600' },
+  { flagKey: 'hasRoomService', label: 'Room service', icon: BedDouble, type: 'inline', description: 'In-room dining', accent: 'text-rose-600' },
+  { flagKey: 'hasSpa', label: 'Spa', icon: Sparkles, type: 'tab', drillTab: 'spa', hoursField: 'spaHours', notesField: 'spaNotes', description: 'Treatments & access', accent: 'text-purple-600' },
+  { flagKey: 'hasPool', label: 'Pool / wellness', icon: Waves, type: 'inline', hoursField: 'poolHours', notesField: 'poolNotes', description: 'Pool, sauna, hot tub', accent: 'text-cyan-600' },
+  { flagKey: 'hasGym', label: 'Gym', icon: Dumbbell, type: 'inline', hoursField: 'gymHours', notesField: 'gymNotes', description: 'Fitness room', accent: 'text-emerald-600' },
+  { flagKey: 'hasBar', label: 'Bar / lounge', icon: Wine, type: 'inline', hoursField: 'barHours', notesField: 'barNotes', description: 'Drinks and snacks', accent: 'text-red-600' },
+  { flagKey: 'hasConference', label: 'Conference', icon: Briefcase, type: 'inline', notesField: 'conferenceNotes', description: 'Meeting rooms', accent: 'text-slate-600' },
+  { flagKey: 'hasTransfers', label: 'Airport transfers', icon: Plane, type: 'inline', notesField: 'transferNotes', description: 'Pickup / dropoff', accent: 'text-sky-600' },
+  { flagKey: 'petFriendly', label: 'Pet-friendly', icon: Dog, type: 'inline', policyField: 'petPolicy', description: 'Pet policy', accent: 'text-orange-600' },
 ];
 
-function FacilitiesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
-  const [editing, setEditing] = useState<string | null>(null);
+function FacilitiesTab({ hotel, onChanged, onJumpTab }: { hotel: Hotel; onChanged: () => void; onJumpTab: (tab: string) => void }) {
+  const [editing, setEditing] = useState<typeof FACILITY_DEFS[number] | null>(null);
   const [draft, setDraft] = useState<{ hours: string; notes: string; policy: string; flag: boolean }>({
     hours: '',
     notes: '',
@@ -1526,7 +1527,7 @@ function FacilitiesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => vo
   const [saving, setSaving] = useState(false);
 
   function startEdit(def: typeof FACILITY_DEFS[number]) {
-    setEditing(String(def.flagKey));
+    setEditing(def);
     setDraft({
       hours: (def.hoursField ? (hotel[def.hoursField] as string | null) : '') || '',
       notes: (def.notesField ? (hotel[def.notesField] as string | null) : '') || '',
@@ -1535,14 +1536,15 @@ function FacilitiesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => vo
     });
   }
 
-  async function saveDef(def: typeof FACILITY_DEFS[number]) {
+  async function saveDef() {
+    if (!editing) return;
     setSaving(true);
     try {
       const payload: any = {};
-      payload[def.flagKey] = draft.flag;
-      if (def.hoursField) payload[def.hoursField] = draft.hours.trim() || null;
-      if (def.notesField) payload[def.notesField] = draft.notes.trim() || null;
-      if (def.policyField) payload[def.policyField] = draft.policy.trim() || null;
+      payload[editing.flagKey] = draft.flag;
+      if (editing.hoursField) payload[editing.hoursField] = draft.hours.trim() || null;
+      if (editing.notesField) payload[editing.notesField] = draft.notes.trim() || null;
+      if (editing.policyField) payload[editing.policyField] = draft.policy.trim() || null;
       await updateHotel(hotel.id, payload);
       setEditing(null);
       onChanged();
@@ -1561,150 +1563,278 @@ function FacilitiesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => vo
     }
   }
 
+  // ── Vital stats ──────────────────────────────────────
+  const venuesCount = (hotel.venues || []).length;
+  const menuCount = (hotel.menuItems || []).length;
+  const servicesCount = (hotel.services || []).length;
+  const knowledgeCount = (hotel.knowledgeEntries || []).length;
+  const enabledFacilities = FACILITY_DEFS.filter((d) => hotel[d.flagKey]).length;
+  const provisioned = !!(hotel as any).openclawConfig?.active;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900">Facilities</h3>
-        <p className="text-sm text-gray-500">An overview of what your hotel offers and how it's configured. Tap any card to edit details.</p>
+      {/* Header with quick edit hotel info link */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+        <div>
+          <h3 className="text-xl font-semibold text-gray-900">Overview</h3>
+          <p className="text-sm text-gray-500">
+            What this hotel offers, how it's configured, and what's missing — at a glance.
+          </p>
+        </div>
+        <button
+          onClick={() => onJumpTab('info')}
+          className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 self-start sm:self-end"
+        >
+          <Save size={14} /> Edit hotel info →
+        </button>
       </div>
 
-      <div className="space-y-3">
+      {/* Vital stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <StatCard label="Facilities" value={enabledFacilities} suffix={`/ ${FACILITY_DEFS.length}`} icon={Building2} />
+        <StatCard label="Venues" value={venuesCount} icon={Utensils} onClick={() => onJumpTab('menu')} />
+        <StatCard label="Menu items" value={menuCount} icon={ChefHat} onClick={() => onJumpTab('menu')} />
+        <StatCard label="Services" value={servicesCount} icon={ConciergeBell} onClick={() => onJumpTab('services')} />
+        <StatCard label="Knowledge" value={knowledgeCount} icon={BookOpen} onClick={() => onJumpTab('knowledge')} />
+        <StatCard
+          label="Concierge"
+          value={provisioned ? 'Live' : 'Off'}
+          icon={Bot}
+          accent={provisioned ? 'text-green-600' : 'text-gray-400'}
+          onClick={() => onJumpTab('bots')}
+        />
+      </div>
+
+      {/* Facilities grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {FACILITY_DEFS.map((def) => {
           const Icon = def.icon;
           const enabled = !!hotel[def.flagKey];
-          const isEditing = editing === String(def.flagKey);
           const hoursValue = def.hoursField ? (hotel[def.hoursField] as string | null) : null;
           const notesValue = def.notesField ? (hotel[def.notesField] as string | null) : null;
           const policyValue = def.policyField ? (hotel[def.policyField] as string | null) : null;
-          const summary = [hoursValue && `🕐 ${hoursValue}`, notesValue, policyValue].filter(Boolean).join(' · ');
+          const summaryParts = [hoursValue && `🕐 ${hoursValue}`, notesValue, policyValue].filter(Boolean) as string[];
 
-          // Special case: Restaurants tab gets venue count summary
           let extraSummary = '';
           if (def.flagKey === 'hasRestaurant') {
-            const venueCount = (hotel.venues || []).length;
-            extraSummary = venueCount > 0 ? `${venueCount} venue${venueCount === 1 ? '' : 's'}` : 'no venues yet';
+            extraSummary = venuesCount > 0 ? `${venuesCount} venue${venuesCount === 1 ? '' : 's'} · ${menuCount} item${menuCount === 1 ? '' : 's'}` : 'no venues yet';
           }
           if (def.flagKey === 'hasSpa') {
             const treatments = (hotel.services || []).filter((s: any) => s.category === 'spa_treatment').length;
             const accesses = (hotel.services || []).filter((s: any) => s.category === 'spa_access').length;
-            extraSummary = treatments + accesses > 0 ? `${treatments} treatment${treatments === 1 ? '' : 's'}, ${accesses} access pass${accesses === 1 ? '' : 'es'}` : 'no items yet';
+            extraSummary = treatments + accesses > 0 ? `${treatments} treatment${treatments === 1 ? '' : 's'}, ${accesses} access` : 'no items yet';
           }
+
+          const incomplete = enabled && !summaryParts.length && def.type === 'inline';
 
           return (
             <div
               key={String(def.flagKey)}
-              className={`border rounded-xl overflow-hidden ${enabled ? 'bg-white' : 'bg-gray-50 border-gray-200'}`}
+              className={`relative border rounded-xl p-4 flex flex-col min-h-[160px] transition ${
+                enabled ? 'bg-white' : 'bg-gray-50 border-gray-200'
+              } ${incomplete ? 'border-amber-300 bg-amber-50' : ''}`}
             >
-              <div className="p-4 sm:p-5 flex items-start gap-3">
-                <Icon size={22} className={enabled ? 'text-blue-600 mt-1' : 'text-gray-400 mt-1'} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className={`font-semibold ${enabled ? 'text-gray-900' : 'text-gray-500'}`}>{def.label}</h4>
-                    {enabled ? (
-                      <span className="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded">enabled</span>
-                    ) : (
-                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">disabled</span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-500 mt-0.5">{def.description}</p>
-                  {enabled && (summary || extraSummary) && (
-                    <p className="text-sm text-gray-700 mt-1.5">
-                      {summary}
-                      {summary && extraSummary && ' · '}
-                      {extraSummary && <span className="text-gray-500">{extraSummary}</span>}
-                    </p>
-                  )}
-                  {enabled && !summary && def.type === 'inline' && !isEditing && (
-                    <p className="text-sm text-amber-700 mt-1.5">⚠️ No details captured yet</p>
-                  )}
-                </div>
-                <div className="shrink-0 flex flex-col items-end gap-1">
-                  {def.type === 'tab' && enabled ? (
-                    <span className="text-xs text-gray-500">→ open the {def.drillTab === 'menu' ? 'Restaurants' : 'Spa'} tab</span>
-                  ) : enabled && !isEditing ? (
-                    <button onClick={() => startEdit(def)} className="text-xs text-blue-600 hover:underline">
-                      Edit
-                    </button>
-                  ) : !enabled ? (
-                    <button
-                      onClick={() => toggleFlag(def)}
-                      disabled={saving}
-                      className="text-xs text-blue-600 hover:underline disabled:opacity-50"
-                    >
-                      Enable
-                    </button>
-                  ) : null}
-                </div>
+              {/* Status pill */}
+              <div className="flex items-center justify-between mb-2">
+                <Icon size={20} className={enabled ? def.accent : 'text-gray-300'} />
+                {enabled ? (
+                  <span className={`text-xs px-2 py-0.5 rounded ${incomplete ? 'bg-amber-100 text-amber-800' : 'bg-green-50 text-green-700'}`}>
+                    {incomplete ? 'incomplete' : 'enabled'}
+                  </span>
+                ) : (
+                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">disabled</span>
+                )}
               </div>
 
-              {isEditing && (
-                <div className="border-t bg-gray-50 p-4 space-y-3">
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={draft.flag}
-                      onChange={(e) => setDraft({ ...draft, flag: e.target.checked })}
-                    />
-                    {def.label} is offered at this hotel
-                  </label>
+              {/* Title */}
+              <h4 className={`font-semibold ${enabled ? 'text-gray-900' : 'text-gray-500'}`}>{def.label}</h4>
+              <p className="text-xs text-gray-500 mt-0.5">{def.description}</p>
 
-                  {def.hoursField && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Hours</label>
-                      <input
-                        type="text"
-                        value={draft.hours}
-                        onChange={(e) => setDraft({ ...draft, hours: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-lg text-sm"
-                        placeholder="e.g. 06:00–22:00"
-                      />
-                    </div>
-                  )}
+              {/* Summary */}
+              <div className="flex-1 mt-3 text-sm text-gray-700 space-y-1">
+                {enabled && summaryParts.map((s, i) => (
+                  <p key={i} className="line-clamp-2">{s}</p>
+                ))}
+                {enabled && extraSummary && (
+                  <p className="text-xs text-gray-500">{extraSummary}</p>
+                )}
+                {incomplete && <p className="text-xs text-amber-700">Tap to add details</p>}
+              </div>
 
-                  {def.notesField && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
-                      <textarea
-                        value={draft.notes}
-                        onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-                        rows={2}
-                        className="w-full px-3 py-2 border rounded-lg text-sm"
-                        placeholder="Anything important guests should know"
-                      />
-                    </div>
-                  )}
-
-                  {def.policyField && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Policy</label>
-                      <textarea
-                        value={draft.policy}
-                        onChange={(e) => setDraft({ ...draft, policy: e.target.value })}
-                        rows={2}
-                        className="w-full px-3 py-2 border rounded-lg text-sm"
-                        placeholder="e.g. Pets allowed in rooms 200–220, 300 NOK/night"
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => saveDef(def)}
-                      disabled={saving}
-                      className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-                    >
-                      {saving ? <Loader size={14} className="animate-spin" /> : <Save size={14} />}
-                      Save
-                    </button>
-                    <button onClick={() => setEditing(null)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
+              {/* Action */}
+              <div className="pt-3 mt-auto border-t -mx-4 -mb-4 px-4 py-2 bg-gray-50 rounded-b-xl flex items-center justify-between text-xs">
+                {def.type === 'tab' && enabled ? (
+                  <button
+                    onClick={() => onJumpTab(def.drillTab!)}
+                    className="text-blue-600 hover:underline font-medium"
+                  >
+                    Manage →
+                  </button>
+                ) : enabled ? (
+                  <button onClick={() => startEdit(def)} className="text-blue-600 hover:underline font-medium">
+                    {summaryParts.length ? 'Edit details' : 'Add details'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => toggleFlag(def)}
+                    disabled={saving}
+                    className="text-blue-600 hover:underline font-medium disabled:opacity-50"
+                  >
+                    Enable
+                  </button>
+                )}
+                {enabled && def.type === 'inline' && (
+                  <button
+                    onClick={() => toggleFlag(def)}
+                    disabled={saving}
+                    className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                    title="Disable this facility"
+                  >
+                    Disable
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
+      </div>
+
+      {/* Edit modal */}
+      {editing && (
+        <FacilityEditModal
+          def={editing}
+          draft={draft}
+          setDraft={setDraft}
+          onSave={saveDef}
+          onCancel={() => setEditing(null)}
+          saving={saving}
+        />
+      )}
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  suffix,
+  icon: Icon,
+  accent,
+  onClick,
+}: {
+  label: string;
+  value: string | number;
+  suffix?: string;
+  icon: any;
+  accent?: string;
+  onClick?: () => void;
+}) {
+  const Component: any = onClick ? 'button' : 'div';
+  return (
+    <Component
+      onClick={onClick}
+      className={`bg-white border rounded-xl p-3 flex flex-col gap-1 text-left transition ${
+        onClick ? 'hover:bg-gray-50 hover:border-gray-300 cursor-pointer' : ''
+      }`}
+    >
+      <Icon size={16} className={accent || 'text-gray-400'} />
+      <div className="text-2xl font-bold text-gray-900 leading-none">
+        {value}
+        {suffix && <span className="text-sm font-normal text-gray-400 ml-1">{suffix}</span>}
+      </div>
+      <div className="text-xs text-gray-500">{label}</div>
+    </Component>
+  );
+}
+
+function FacilityEditModal({
+  def,
+  draft,
+  setDraft,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  def: typeof FACILITY_DEFS[number];
+  draft: { hours: string; notes: string; policy: string; flag: boolean };
+  setDraft: (d: { hours: string; notes: string; policy: string; flag: boolean }) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const Icon = def.icon;
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onCancel}>
+      <div
+        className="bg-white rounded-xl max-w-lg w-full p-5 sm:p-6 space-y-4 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2">
+          <Icon size={22} className={def.accent} />
+          <h3 className="text-lg font-semibold text-gray-900">{def.label}</h3>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={draft.flag}
+            onChange={(e) => setDraft({ ...draft, flag: e.target.checked })}
+          />
+          {def.label} is offered at this hotel
+        </label>
+
+        {def.hoursField && (
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Hours</label>
+            <input
+              type="text"
+              value={draft.hours}
+              onChange={(e) => setDraft({ ...draft, hours: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg text-sm"
+              placeholder="e.g. 06:00–22:00"
+            />
+          </div>
+        )}
+
+        {def.notesField && (
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+            <textarea
+              value={draft.notes}
+              onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 border rounded-lg text-sm"
+              placeholder="Anything important guests should know"
+            />
+          </div>
+        )}
+
+        {def.policyField && (
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Policy</label>
+            <textarea
+              value={draft.policy}
+              onChange={(e) => setDraft({ ...draft, policy: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 border rounded-lg text-sm"
+              placeholder="e.g. Pets allowed in rooms 200–220, 300 NOK/night"
+            />
+          </div>
+        )}
+
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+          <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
+            Cancel
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="flex items-center justify-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+          >
+            {saving ? <Loader size={14} className="animate-spin" /> : <Save size={14} />}
+            Save
+          </button>
+        </div>
       </div>
     </div>
   );
