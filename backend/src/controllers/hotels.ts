@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../config/database";
+import { provisionHotel } from "../services/provisioning";
 
 // Helper to extract string param (Express 5 types)
 const param = (req: Request, name: string): string => req.params[name] as string;
@@ -79,6 +80,15 @@ export async function createHotel(req: Request, res: Response): Promise<void> {
     await prisma.knowledgeEntry.createMany({
       data: facilityNotes.map(n => ({ ...n, hotelId: hotel.id })),
     });
+  }
+
+  // Auto-provision the concierge agent so the AI Manager and 'Try as a guest'
+  // panels work immediately. Failures are logged but don't block hotel creation —
+  // the dashboard can re-trigger provisioning from the Bot Setup tab if needed.
+  try {
+    await provisionHotel(hotel.id);
+  } catch (provisionErr) {
+    console.warn(`[createHotel] auto-provision failed for hotel ${hotel.id}:`, provisionErr);
   }
 
   res.status(201).json({ hotel: sanitizeHotel(hotel) });

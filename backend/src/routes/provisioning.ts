@@ -114,9 +114,20 @@ router.get("/:id/staff-token", async (req, res) => {
     res.status(404).json({ error: "Hotel not found" });
     return;
   }
-  const bot = await prisma.telegramBot.findUnique({ where: { hotelId: id } });
+  let bot = await prisma.telegramBot.findUnique({ where: { hotelId: id } });
   if (!bot?.staffToken) {
-    res.status(404).json({ error: "Hotel must be provisioned before chat is available" });
+    // Auto-provision on demand so the AI Manager just works — no manual button needed
+    try {
+      await provisionHotel(id);
+      bot = await prisma.telegramBot.findUnique({ where: { hotelId: id } });
+    } catch (err: any) {
+      console.error("Auto-provision failed:", err);
+      res.status(500).json({ error: "Could not auto-provision the agent. Please try again." });
+      return;
+    }
+  }
+  if (!bot?.staffToken) {
+    res.status(500).json({ error: "Provisioning incomplete — contact support." });
     return;
   }
   res.json({ staffToken: bot.staffToken });
