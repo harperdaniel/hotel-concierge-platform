@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Layout from '../components/Layout';
 import { getHotel, updateHotel, createKnowledge, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, listVenues, createVenue, addVenueMenuItem, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus, type ChatMsg, type Venue } from '../lib/api';
-import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves, Building2, Wine, Dumbbell, Briefcase, Plane, Dog, BedDouble, Coffee, ChefHat } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves, Building2, Wine, Dumbbell, Briefcase, Plane, Dog, BedDouble, Coffee, ChefHat, UserCircle } from 'lucide-react';
 
 export default function HotelDetail() {
   const { id } = useParams<{ id: string }>();
@@ -16,6 +16,7 @@ export default function HotelDetail() {
     searchParams.get('welcome') === '1' ? 'bots' : 'facilities'
   );
   const [aiOpen, setAiOpen] = useState(false);
+  const [guestOpen, setGuestOpen] = useState(false);
   const justCreated = searchParams.get('welcome') === '1';
 
   // Form state
@@ -111,6 +112,12 @@ export default function HotelDetail() {
             className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:from-blue-700 hover:to-purple-700 shadow-sm"
           >
             <Sparkles size={14} /> AI Manager
+          </button>
+          <button
+            onClick={() => setGuestOpen(true)}
+            className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 py-1.5 rounded-full text-sm font-medium hover:from-emerald-600 hover:to-teal-700 shadow-sm"
+          >
+            <UserCircle size={14} /> Try as a guest
           </button>
         </div>
         {justCreated && (
@@ -255,6 +262,9 @@ export default function HotelDetail() {
 
       {/* AI Manager overlay panel */}
       {aiOpen && <AIManagerPanel hotel={hotel} onClose={() => setAiOpen(false)} onDataChanged={loadHotel} />}
+
+      {/* Guest demo overlay panel */}
+      {guestOpen && <GuestDemoPanel hotel={hotel} onClose={() => setGuestOpen(false)} />}
     </Layout>
   );
 }
@@ -713,7 +723,12 @@ function buildOpeningMessage(hotel: Hotel): string {
     missingList = `${missing.slice(0, -1).join(', ')}, and ${missing[missing.length - 1]}`;
   }
 
-  return `${greeting}\n\nI took a look at your setup and noticed you haven't added **${missingList}** yet.\n\nWant me to walk you through it? Just say *"yes"* and I can take a couple of paths:\n\n- 🌐 **Got a website?** Drop the URL and I'll pull menus, hours, and services from there — you just confirm or correct what I find. Way faster than typing.\n- ✍️ **No website handy?** I'll ask you the right questions one at a time.\n\nOr, jump to the relevant tab and do it yourself — **I'm here either way.** 😊\n\n🎙️ You can also speak instead of type — Norwegian or English.`;
+  const websiteOnFile = !!hotel.website;
+  const websitePath = websiteOnFile
+    ? `\n\n🌐 I have your website on file (${hotel.website}). I can re-read it for anything I missed during onboarding — just ask.`
+    : `\n\n- 🌐 **Got a website?** Drop the URL and I'll pull menus, hours, and services from there — you just confirm or correct what I find. Way faster than typing.`;
+
+  return `${greeting}\n\nI took a look at your setup and noticed you haven't added **${missingList}** yet.\n\nWant me to walk you through it? Just say *"yes"* and I'll get going.${websitePath}\n\nOr, jump to the relevant tab and do it yourself — **I'm here either way.** 😊\n\n🎙️ You can also speak instead of type — Norwegian or English.`;
 }
 
 function describeToolCall(tc: { name: string; args: any; result: any }): string {
@@ -1962,6 +1977,122 @@ function FacilityEditModal({
             Save
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Guest demo panel (shows the manager what a guest sees) ────────────
+
+function GuestDemoPanel({ hotel, onClose }: { hotel: Hotel; onClose: () => void }) {
+  const [messages, setMessages] = useState<ChatMsg[]>([
+    {
+      role: 'assistant',
+      content: `Welcome to **${hotel.name}**! 👋\n\nI'm your AI concierge. How can I help — a dinner reservation, room service, or a question about the hotel?`,
+    },
+  ]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || sending) return;
+    const next: ChatMsg[] = [...messages, { role: 'user', content: trimmed }];
+    setMessages(next);
+    setInput('');
+    setSending(true);
+    try {
+      // Lazy import to avoid a circular: use the imported guestDemoChat helper
+      const { guestDemoChat } = await import('../lib/api');
+      const r = await guestDemoChat(hotel.id, next);
+      setMessages([...next, { role: 'assistant', content: r.reply || '(no reply)' }]);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Failed';
+      setMessages([...next, { role: 'assistant', content: `⚠️ ${msg}` }]);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
+      <div className="relative bg-gray-50 w-full sm:w-[480px] lg:w-[560px] h-full shadow-2xl flex flex-col animate-slideInRight">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
+          <div className="flex items-center gap-2">
+            <UserCircle size={18} className="text-emerald-600" />
+            <h3 className="font-semibold text-gray-900">Guest experience</h3>
+            <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded">DEMO</span>
+          </div>
+          <button onClick={onClose} className="p-2 -mr-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg" aria-label="Close demo">
+            <XCircle size={20} />
+          </button>
+        </div>
+
+        {/* Demo banner */}
+        <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-200 text-xs text-emerald-800">
+          You're chatting as a guest of <strong>{hotel.name}</strong>. Bookings you make here are not real — this is just a preview of what your guests will experience.
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+          {messages.map((m, i) => (
+            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm break-words ${
+                  m.role === 'user'
+                    ? 'bg-emerald-600 text-white rounded-br-sm whitespace-pre-wrap'
+                    : 'bg-white border border-gray-200 text-gray-900 rounded-bl-sm chat-md'
+                }`}
+              >
+                {m.role === 'assistant' ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                ) : (
+                  m.content
+                )}
+              </div>
+            </div>
+          ))}
+          {sending && (
+            <div className="flex justify-start">
+              <div className="bg-white border border-gray-200 text-gray-500 rounded-2xl rounded-bl-sm px-4 py-2 text-sm flex items-center gap-2">
+                <Loader size={14} className="animate-spin" /> typing…
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input */}
+        <form onSubmit={handleSend} className="border-t p-3 bg-white flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Try 'I'd like a table for 2 tonight at 8'…"
+            className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+          />
+          <button
+            type="submit"
+            disabled={sending || !input.trim()}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-sm font-medium"
+          >
+            <Send size={16} /> <span className="hidden sm:inline">Send</span>
+          </button>
+        </form>
       </div>
     </div>
   );

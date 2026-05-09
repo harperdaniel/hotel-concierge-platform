@@ -340,3 +340,51 @@ export async function removeMenuItem(itemId: string) {
   const { data } = await api.delete(`/menu-items/${itemId}`);
   return data;
 }
+
+// ── Wizard: import suggestions from a website ────────────────────
+
+export interface ImportSuggestion {
+  hotelName?: string;
+  city?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  flags: {
+    hasRestaurant?: boolean;
+    hasRoomService?: boolean;
+    hasSpa?: boolean;
+    hasPool?: boolean;
+    hasGym?: boolean;
+    hasBar?: boolean;
+    hasConference?: boolean;
+    hasTransfers?: boolean;
+    petFriendly?: boolean;
+  };
+  facilityDetails: Record<string, string | undefined>;
+  venues: { name: string; kind: string; hours?: string; location?: string; description?: string }[];
+  menuItems: { name: string; description?: string; priceNok?: number; category?: string; venueName?: string }[];
+  services: { name: string; description?: string; durationMin?: number; priceNok?: number; category?: string }[];
+  knowledge: { category: string; content: string }[];
+  sourceUrls: string[];
+  warnings: string[];
+}
+
+export async function websiteImport(payload: { url?: string; hotelName?: string; city?: string }) {
+  const { data } = await api.post('/hotels/website-import', payload);
+  return data as { suggestions: ImportSuggestion };
+}
+
+export async function guestDemoChat(hotelId: string, messages: ChatMsg[]) {
+  const { data } = await api.post(`/hotels/${hotelId}/guest-demo-chat`, { messages });
+  return data as { reply: string };
+}
+
+export async function applyImport(hotelId: string, payload: any) {
+  const { data } = await api.post(`/hotels/${hotelId}/apply-import`, payload);
+  return data as {
+    venuesCreated: number;
+    menuItemsCreated: number;
+    servicesCreated: number;
+    knowledgeCreated: number;
+  };
+}

@@ -13,9 +13,10 @@ const MODEL = process.env.MANAGER_MODEL || "deepseek-chat";
 
 // ── System prompt (mirrors the Telegram SOUL.md) ──────
 
-function systemPrompt(hotelName: string): string {
+function systemPrompt(hotelName: string, websiteUrl?: string | null): string {
   return `You are an AI assistant helping staff at "${hotelName}" configure their hotel concierge.
 You are NEVER speaking with a guest. You are ALWAYS speaking with hotel staff.
+${websiteUrl ? `\n# Hotel website on file\nThe hotel's website is **${websiteUrl}**. NEVER ask the user for their website — we already have it. If you need to look up information, you can call web_fetch with that URL directly (or web_search using the hotel name + city).` : ""}
 
 # Your job
 
@@ -594,7 +595,7 @@ export async function managerChat(
   if (!hotel) throw new Error("Hotel not found");
 
   const messages: any[] = [
-    { role: "system", content: systemPrompt(hotel.name) },
+    { role: "system", content: systemPrompt(hotel.name, hotel.website) },
     ...history,
   ];
 
