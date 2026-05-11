@@ -32,12 +32,25 @@ export async function getHotel(req: Request, res: Response): Promise<void> {
     include: {
       knowledgeEntries: true,
       menuItems: { where: { available: true } },
-      services: true,
+      services: { include: { integration: true } },
       telegramBot: true,
       openclawConfig: true,
       venues: {
         where: { active: true },
-        include: { _count: { select: { menuItems: true } } },
+        include: { _count: { select: { menuItems: true } }, integration: true },
+        orderBy: { createdAt: "asc" },
+      },
+      // Top-level: bookability of room service is derived from this link.
+      roomServiceIntegration: true,
+      // Whole list of configured integrations — used by the dashboard's
+      // integration picker drop-downs. authBlob is intentionally NOT
+      // selected; secrets must only travel via the dedicated routes.
+      integrations: {
+        select: {
+          id: true, name: true, kind: true, endpoint: true, status: true,
+          lastTestedAt: true, lastError: true, createdAt: true, updatedAt: true,
+          hotelId: true,
+        },
         orderBy: { createdAt: "asc" },
       },
     },
@@ -110,6 +123,19 @@ export async function updateHotel(req: Request, res: Response): Promise<void> {
   const updateData = { ...req.body };
   if (updateData.smtpPass === "") {
     delete updateData.smtpPass;
+  }
+
+  // Validate roomServiceIntegrationId belongs to this hotel (or is null/'' to unlink).
+  if ("roomServiceIntegrationId" in updateData) {
+    if (updateData.roomServiceIntegrationId === "" || updateData.roomServiceIntegrationId === null) {
+      updateData.roomServiceIntegrationId = null;
+    } else {
+      const integration = await prisma.integration.findUnique({ where: { id: updateData.roomServiceIntegrationId } });
+      if (!integration || integration.hotelId !== id) {
+        res.status(400).json({ error: "roomServiceIntegrationId does not belong to this hotel" });
+        return;
+      }
+    }
   }
 
   const hotel = await prisma.hotel.update({
@@ -205,8 +231,6 @@ export async function listServices(req: Request, res: Response): Promise<void> {
   res.json({ services });
 }
 
-const VALID_BOOKING_METHODS = ["internal", "calendar", "external", "manual"];
-
 export async function updateService(req: Request, res: Response): Promise<void> {
   const id = param(req, "id");
   const service = await prisma.service.findUnique({
@@ -219,22 +243,23 @@ export async function updateService(req: Request, res: Response): Promise<void> 
   }
   const allowed = [
     "name", "description", "durationMin", "price", "category",
-    "bookable", "bookingMethod", "bookingInstructions",
+    "integrationId", "bookingInstructions",
   ];
   const updates: Record<string, any> = {};
   for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k];
   if (typeof updates.price === "number") updates.price = Math.round(updates.price);
   if (typeof updates.durationMin === "number") updates.durationMin = Math.round(updates.durationMin);
-  if (updates.bookingMethod && !VALID_BOOKING_METHODS.includes(updates.bookingMethod)) {
-    res.status(400).json({ error: `bookingMethod must be one of: ${VALID_BOOKING_METHODS.join(", ")}` });
-    return;
-  }
-  // Keep state consistent when toggling bookable.
-  if (updates.bookable === false) {
-    updates.bookingMethod = null;
-    updates.bookingInstructions = null;
-  } else if (updates.bookable === true && !updates.bookingMethod && !service.bookingMethod) {
-    updates.bookingMethod = "internal";
+  // Validate integration belongs to the same hotel; '' or null unlinks.
+  if ("integrationId" in updates) {
+    if (updates.integrationId === "" || updates.integrationId === null) {
+      updates.integrationId = null;
+    } else {
+      const integration = await prisma.integration.findUnique({ where: { id: updates.integrationId } });
+      if (!integration || integration.hotelId !== service.hotelId) {
+        res.status(400).json({ error: "integrationId does not belong to this hotel" });
+        return;
+      }
+    }
   }
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No updates" });

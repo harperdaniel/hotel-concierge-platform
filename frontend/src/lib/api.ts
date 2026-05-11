@@ -37,7 +37,29 @@ export interface User {
   role: string;
 }
 
-export type BookingMethod = 'internal' | 'calendar' | 'external' | 'manual';
+export type IntegrationKind =
+  | 'manual_queue'
+  | 'custom_webhook'
+  | 'email'
+  | 'opentable'
+  | 'google_calendar';
+
+export interface Integration {
+  id: string;
+  hotelId: string;
+  name: string;
+  kind: IntegrationKind;
+  endpoint: string | null;
+  status: 'untested' | 'ok' | 'error';
+  lastTestedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Server returns a non-secret summary of which auth fields are set,
+  // never the secrets themselves.
+  authSummary?: Record<string, boolean>;
+  _count?: { venues: number; services: number; hotelsAsRoomService: number };
+}
 
 export interface Venue {
   id: string;
@@ -47,9 +69,11 @@ export interface Venue {
   hours: string | null;
   location: string | null;
   active: boolean;
-  // Bookability
-  bookable?: boolean;
-  bookingMethod?: BookingMethod | null;
+  // Bookability is derived from integrationId. The expanded `integration`
+  // is present when the API includes it (e.g. GET /api/guest/hotels/.../data
+  // or the venue list endpoint).
+  integrationId?: string | null;
+  integration?: Integration | null;
   bookingInstructions?: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -78,9 +102,11 @@ export interface Hotel {
   smtpFromEmail?: string | null;
   // The human name the guest concierge uses (default 'Alfred Pennyworth')
   conciergeName?: string;
-  // Room service bookability (hotel-level)
-  roomServiceBookable?: boolean;
+  // Room service — bookability derived from the linked integration.
+  roomServiceIntegrationId?: string | null;
+  roomServiceIntegration?: Integration | null;
   roomServiceBookingNotes?: string | null;
+  integrations?: Integration[];
   // Facility flags
   hasRestaurant?: boolean;
   hasRoomService?: boolean;
@@ -137,9 +163,9 @@ export interface Service {
   durationMin: number | null;
   price: number | null;
   category?: 'spa_treatment' | 'spa_access' | 'transfer' | 'activity' | 'general' | string;
-  // Bookability
-  bookable?: boolean;
-  bookingMethod?: BookingMethod | null;
+  // Bookability is derived from integrationId.
+  integrationId?: string | null;
+  integration?: Integration | null;
   bookingInstructions?: string | null;
 }
 
@@ -230,6 +256,38 @@ export async function updateService(serviceId: string, payload: Partial<Service>
 export async function deleteServiceApi(serviceId: string) {
   const { data } = await api.delete(`/hotels/services/${serviceId}`);
   return data;
+}
+
+// ── Integrations ──────────────────────────────────────
+export async function listIntegrations(hotelId: string) {
+  const { data } = await api.get(`/hotels/${hotelId}/integrations`);
+  return data as { integrations: Integration[] };
+}
+
+export async function createIntegration(
+  hotelId: string,
+  payload: { name: string; kind: IntegrationKind; endpoint?: string | null; auth?: Record<string, string> },
+) {
+  const { data } = await api.post(`/hotels/${hotelId}/integrations`, payload);
+  return data as { integration: Integration };
+}
+
+export async function updateIntegration(
+  integrationId: string,
+  payload: { name?: string; kind?: IntegrationKind; endpoint?: string | null; auth?: Record<string, string> | null },
+) {
+  const { data } = await api.patch(`/integrations/${integrationId}`, payload);
+  return data as { integration: Integration };
+}
+
+export async function deleteIntegration(integrationId: string) {
+  const { data } = await api.delete(`/integrations/${integrationId}`);
+  return data as { deleted: true; unlinked: { venues: number; services: number; roomService: number } };
+}
+
+export async function testIntegration(integrationId: string) {
+  const { data } = await api.post(`/integrations/${integrationId}/test`);
+  return data as { integration: Integration };
 }
 
 export async function listBookings(hotelId: string) {

@@ -58,15 +58,14 @@ model Hotel {
   // ALWAYS behaves as this human and never reveals it's an AI.
   conciergeName String @default("Alfred Pennyworth")
 
-  // Whether room-service orders are actually fulfillable end-to-end at this
-  // hotel (kitchen + delivery wired up via the platform's pending-orders
-  // workflow OR an external integration). When false, the concierge will
-  // describe the menu but NEVER promise to deliver; it redirects to the
-  // appropriate venue or the front desk.
-  roomServiceBookable Boolean @default(false)
-  // Optional notes shown to the concierge about HOW room-service bookings
-  // are fulfilled (e.g. "Calls go to extension 9", "Orders printed in main
-  // kitchen"). Surfaced in the bot context only, never to guests verbatim.
+  // Room-service bookability is now derived from whether an Integration is
+  // linked: roomServiceIntegrationId != null → room service is bookable
+  // through that integration; null → informational only.
+  roomServiceIntegrationId String?
+  roomServiceIntegration   Integration? @relation("HotelRoomServiceIntegration", fields: [roomServiceIntegrationId], references: [id], onDelete: SetNull)
+  // Free-form notes shown to the concierge about HOW room-service orders
+  // are fulfilled (e.g. "Printed in main kitchen at the pass"). Surfaced in
+  // the bot context only, never to guests verbatim.
   roomServiceBookingNotes String?
 
   // Structured details for the simpler facilities (knowledge-style fields
@@ -93,8 +92,64 @@ model Hotel {
   telegramBot        TelegramBot?
   openclawConfig     OpenClawConfig?
   venues             Venue[]
+  integrations       Integration[]
 
   @@map("hotels")
+}
+
+// ── Integrations (how bookings actually flow to the hotel's systems) ──
+//
+// One Integration represents a single configured booking pipe (e.g. a
+// specific OpenTable account, a Spa-Booker tenant, a webhook URL, or the
+// platform's internal pending-bookings queue). Offerings (venues and
+// services) and the hotel-level room-service flow each reference at most
+// one Integration via a foreign key. "bookable" is therefore a *computed*
+// property: an offering is bookable iff it has an integrationId set AND the
+// linked integration is not in error state.
+
+model Integration {
+  id        String   @id @default(cuid())
+  hotelId   String
+  hotel     Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  // Human-readable label, shown in the dashboard dropdown ("OpenTable —
+  // main building", "Spa-Booker Pro", "Zapier webhook").
+  name      String
+  // Kind drives form rendering, validation, and runtime booking behaviour.
+  //   manual_queue     — internal pending-bookings queue (no external system)
+  //   custom_webhook   — POST booking JSON to a URL with optional auth header
+  //   email            — booking is emailed to a hotel address
+  //   opentable        — OpenTable account (stub for v1, real impl later)
+  //   google_calendar  — Google Calendar (stub for v1, real impl later)
+  kind      String
+
+  // Free-form endpoint identifier (URL for webhook, calendar id for gcal,
+  // restaurant id for OpenTable, etc.). May be null for kinds that don't
+  // need one (manual_queue).
+  endpoint  String?
+
+  // Encrypted blob of secret credentials. Format: "v1:<base64-iv>:<base64-ciphertext>".
+  // Decrypted only at request time; never sent back to the frontend
+  // verbatim. Plaintext shape is provider-specific JSON.
+  authBlob  String?
+
+  // Last test result. Updated whenever the user hits "Test connection" or
+  // when a real booking is attempted.
+  status        String   @default("untested") // "untested" | "ok" | "error"
+  lastTestedAt  DateTime?
+  lastError     String?
+
+  // Reverse relations — needed because Hotel/Venue/Service can each reference
+  // this Integration and Prisma requires the opposite side of every relation.
+  venues                 Venue[]
+  services               Service[]
+  hotelsAsRoomService    Hotel[]   @relation("HotelRoomServiceIntegration")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hotelId])
+  @@map("integrations")
 }
 
 // ── Hotel Knowledge Base (free-text) ──────────────────
@@ -122,21 +177,15 @@ model Venue {
   active      Boolean @default(true)
 
   // ── Bookability ────────────────────────────────────
-  // bookable=true means the concierge can actually take a reservation
-  // here end-to-end (staff will see it in the dashboard pending-bookings
-  // queue, or an external integration will receive it). bookable=false
-  // means the venue is INFORMATIONAL ONLY — the concierge can describe
-  // it, share hours and menu, but MUST direct the guest to call the
-  // venue, the front desk, or walk in. Default false (safer for new hotels).
-  bookable           Boolean @default(false)
-  // How bookings flow when bookable=true:
-  //   "internal"   — POST /api/guest/bookings (pending queue)
-  //   "calendar"   — Google Calendar / iCal integration (future)
-  //   "external"   — third-party API like OpenTable (future)
-  //   "manual"     — staff promises to follow up out-of-band; bot still records intent
-  bookingMethod      String? // null when not bookable
-  // Free-text instructions for the concierge or for staff. Shown to the
-  // bot context (e.g. "All Sky Bar tables are walk-in only after 21:00")
+  // bookable status is computed from integrationId: when an Integration is
+  // linked and not in error state, the concierge may take reservations and
+  // route them through that integration. Otherwise the venue is
+  // informational only and the concierge must redirect the guest to a human.
+  integrationId      String?
+  integration        Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  // Free-text fulfilment notes — surfaced to the concierge context for
+  // bookable venues so it knows e.g. "All Sky Bar tables are walk-in only
+  // after 21:00". Not shown verbatim to guests.
   bookingInstructions String?
 
   createdAt   DateTime @default(now())
@@ -184,13 +233,9 @@ model Service {
   category    String  @default("general")
 
   // ── Bookability ────────────────────────────────────
-  // bookable=true → the concierge can actually book this service end-to-end
-  // (e.g. spa appointment, airport transfer pickup). bookable=false → the
-  // service is informational only; the bot describes it, prices it, but
-  // MUST send the guest to a real human (front desk / spa reception / phone
-  // number) to complete the booking. Default false.
-  bookable           Boolean @default(false)
-  bookingMethod      String? // "internal" | "calendar" | "external" | "manual"
+  // Bookable iff an Integration is linked and not in error state.
+  integrationId      String?
+  integration        Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
   bookingInstructions String?
 
   hotelId String

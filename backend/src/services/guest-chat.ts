@@ -9,6 +9,25 @@ const MODEL = process.env.GUEST_DEMO_MODEL || "deepseek-chat";
 
 // ── Build a hotel context block for the guest concierge ───────────────
 
+// An offering is bookable iff it has an Integration linked and that
+// integration is not currently in error state. Centralized helper so the
+// rule is consistent across context-building and booking gates.
+function isOfferingBookable(integration: any): boolean {
+  return !!integration && integration.status !== "error";
+}
+
+function integrationLabel(integration: any): string {
+  if (!integration) return "";
+  const kindLabel: Record<string, string> = {
+    manual_queue: "internal pending-bookings queue",
+    custom_webhook: "webhook integration",
+    email: "email integration",
+    opentable: "OpenTable",
+    google_calendar: "Google Calendar",
+  };
+  return kindLabel[integration.kind] || integration.kind;
+}
+
 function buildHotelContext(hotel: any): string {
   const lines: string[] = [];
   lines.push(`# Hotel context: ${hotel.name}`);
@@ -16,13 +35,12 @@ function buildHotelContext(hotel: any): string {
   if (hotel.phone) lines.push(`Phone: ${hotel.phone}`);
   if (hotel.timezone) lines.push(`Timezone: ${hotel.timezone}`);
 
-  // Room service bookability — the concierge needs this to know whether to
-  // accept orders or redirect.
+  // Room service bookability is now derived from the linked integration.
   if (hotel.hasRoomService) {
-    if (hotel.roomServiceBookable) {
-      lines.push(`Room service: ✅ BOOKABLE — you (the concierge) CAN take room-service orders and they will be fulfilled by the hotel.${hotel.roomServiceBookingNotes ? ` Internal note: ${hotel.roomServiceBookingNotes}` : ""}`);
+    if (isOfferingBookable(hotel.roomServiceIntegration)) {
+      lines.push(`Room service: ✅ BOOKABLE via ${integrationLabel(hotel.roomServiceIntegration)} — you CAN take room-service orders end-to-end.${hotel.roomServiceBookingNotes ? ` Internal note: ${hotel.roomServiceBookingNotes}` : ""}`);
     } else {
-      lines.push(`Room service: ⚠️ INFO ONLY — the menu can be shared, but you must NOT promise to deliver. Direct the guest to call the front desk or the kitchen to place an actual order.`);
+      lines.push(`Room service: ⚠️ INFO ONLY — the menu can be shared, but you must NOT promise to deliver. Direct the guest to call the front desk or the kitchen to place the actual order.`);
     }
   }
 
@@ -53,12 +71,13 @@ function buildHotelContext(hotel: any): string {
     lines.push("\n## Venues & menus");
     for (const v of hotel.venues) {
       const headerBits = [v.name, v.kind, v.hours, v.location].filter(Boolean).join(" · ");
-      const bookTag = v.bookable
-        ? `✅ BOOKABLE${v.bookingMethod ? ` (${v.bookingMethod})` : ""}`
+      const bookable = isOfferingBookable(v.integration);
+      const bookTag = bookable
+        ? `✅ BOOKABLE via ${integrationLabel(v.integration)}`
         : `⚠️ INFO ONLY — do NOT promise to book a table here. Tell the guest to call the venue or front desk.`;
       lines.push(`\n### ${headerBits}`);
       lines.push(`Booking status: ${bookTag}`);
-      if (v.bookable && v.bookingInstructions) {
+      if (bookable && v.bookingInstructions) {
         lines.push(`Internal booking note (do not read verbatim to guest): ${v.bookingInstructions}`);
       }
       const items = (hotel.menuItems || []).filter((m: any) => m.venueId === v.id);
@@ -90,17 +109,17 @@ function buildHotelContext(hotel: any): string {
 
   // Services — split into bookable vs info-only so the concierge can't miss it.
   if (hotel.services && hotel.services.length) {
-    const bookable = hotel.services.filter((s: any) => s.bookable);
-    const infoOnly = hotel.services.filter((s: any) => !s.bookable);
+    const bookable = hotel.services.filter((s: any) => isOfferingBookable(s.integration));
+    const infoOnly = hotel.services.filter((s: any) => !isOfferingBookable(s.integration));
     if (bookable.length) {
-      lines.push("\n## Services — ✅ BOOKABLE (you CAN book these end-to-end; orders land in the staff pending-bookings queue)");
+      lines.push("\n## Services — ✅ BOOKABLE (you CAN book these end-to-end through the linked integration)");
       for (const s of bookable) {
         const price = s.price ? ` — ${(s.price / 100).toFixed(0)} kr` : "";
         const dur = s.durationMin ? ` (${s.durationMin} min)` : "";
         const desc = s.description ? ` — ${s.description}` : "";
-        const method = s.bookingMethod ? ` [method: ${s.bookingMethod}]` : "";
+        const via = ` [via ${integrationLabel(s.integration)}]`;
         const internalNote = s.bookingInstructions ? ` — internal note: ${s.bookingInstructions}` : "";
-        lines.push(`- [${s.category || "general"}] ${s.name}${dur}${price}${desc}${method}${internalNote}`);
+        lines.push(`- [${s.category || "general"}] ${s.name}${dur}${price}${desc}${via}${internalNote}`);
       }
     }
     if (infoOnly.length) {
@@ -231,10 +250,11 @@ export async function guestChat(hotelId: string, history: GuestChatMsg[]): Promi
   const hotel = await prisma.hotel.findUnique({
     where: { id: hotelId },
     include: {
-      venues: true,
+      venues: { include: { integration: true } },
       menuItems: true,
-      services: true,
+      services: { include: { integration: true } },
       knowledgeEntries: true,
+      roomServiceIntegration: true,
     },
   });
   if (!hotel) throw new Error("Hotel not found");

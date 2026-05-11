@@ -3,63 +3,14 @@ import { useParams, Link, useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Layout from '../components/Layout';
-import { getHotel, updateHotel, createKnowledge, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, listVenues, createVenue, updateVenue, addVenueMenuItem, createService, updateService, type Hotel, type KnowledgeEntry, type ProvisionStatus, type ChatMsg, type Venue } from '../lib/api';
-import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves, Building2, Wine, Dumbbell, Briefcase, Plane, Dog, BedDouble, Coffee, ChefHat, UserCircle, BookCheck, Info } from 'lucide-react';
-
-// ── Bookable badge ─ reusable visual flag distinguishing offerings the
-// concierge can actually book end-to-end ("Bookable") from those that are
-// purely informational ("Info only"). Click to toggle when an onToggle
-// handler is provided.
-function BookableBadge({
-  bookable,
-  bookingMethod,
-  onToggle,
-  busy,
-  size = 'sm',
-  title,
-}: {
-  bookable: boolean;
-  bookingMethod?: string | null;
-  onToggle?: () => void;
-  busy?: boolean;
-  size?: 'sm' | 'xs';
-  title?: string;
-}) {
-  const pad = size === 'xs' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs';
-  const base = 'inline-flex items-center gap-1 rounded-full font-medium border whitespace-nowrap';
-  const tone = bookable
-    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-    : 'bg-amber-50 text-amber-800 border-amber-200';
-  const Icon = bookable ? BookCheck : Info;
-  const label = bookable
-    ? `Bookable${bookingMethod && bookingMethod !== 'internal' ? ` (${bookingMethod})` : ''}`
-    : 'Info only';
-  const tooltip =
-    title ||
-    (bookable
-      ? 'The concierge can take a booking for this and staff will see it in the pending-bookings queue.'
-      : 'The concierge will describe this but will not take a booking — it tells the guest to call the front desk or visit in person. Click to make bookable.');
-  if (!onToggle) {
-    return (
-      <span className={`${base} ${tone} ${pad}`} title={tooltip}>
-        <Icon size={size === 'xs' ? 11 : 13} />
-        {label}
-      </span>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      disabled={busy}
-      title={tooltip}
-      className={`${base} ${tone} ${pad} hover:brightness-95 disabled:opacity-50`}
-    >
-      {busy ? <Loader size={size === 'xs' ? 11 : 13} className="animate-spin" /> : <Icon size={size === 'xs' ? 11 : 13} />}
-      {label}
-    </button>
-  );
-}
+import { getHotel, updateHotel, createKnowledge, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, listVenues, createVenue, addVenueMenuItem, createService, type Hotel, type Integration, type KnowledgeEntry, type ProvisionStatus, type ChatMsg, type Venue, type Service } from '../lib/api';
+import { Pencil } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves, Building2, Wine, Dumbbell, Briefcase, Plane, Dog, BedDouble, Coffee, ChefHat, UserCircle, BookCheck, KeyRound } from 'lucide-react';
+import IntegrationsTab from '../components/IntegrationsTab';
+import { BookableBadge, IntegrationPicker } from '../components/IntegrationPicker';
+import EditDrawer from '../components/EditDrawer';
+import VenueEditForm from '../components/VenueEditForm';
+import ServiceEditForm from '../components/ServiceEditForm';
 
 export default function HotelDetail() {
   const { id } = useParams<{ id: string }>();
@@ -67,11 +18,18 @@ export default function HotelDetail() {
   const [hotel, setHotel] = useState<Hotel | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'info' | 'facilities' | 'knowledge' | 'menu' | 'services' | 'spa' | 'bots'>(
+  const [activeTab, setActiveTab] = useState<'info' | 'facilities' | 'knowledge' | 'menu' | 'services' | 'spa' | 'bots' | 'integrations'>(
     searchParams.get('welcome') === '1' ? 'bots' : 'facilities'
   );
   const [aiOpen, setAiOpen] = useState(false);
   const [guestOpen, setGuestOpen] = useState(false);
+  const [editingVenue, setEditingVenue] = useState<Venue | null>(null);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  // Integrations come down via getHotel; we expose the list via `integrations`
+  // for child components and a `refreshIntegrations` callback that just
+  // re-loads the hotel (which re-fetches everything in one go).
+  const integrations: Integration[] = (hotel as any)?.integrations || [];
+  const refreshIntegrations = loadHotel;
   const justCreated = searchParams.get('welcome') === '1';
 
   // Form state
@@ -151,6 +109,7 @@ export default function HotelDetail() {
     { key: 'menu', label: 'Restaurants', icon: Utensils },
     { key: 'spa', label: 'Spa', icon: Waves },
     { key: 'services', label: 'Services', icon: ConciergeBell },
+    { key: 'integrations', label: 'Integrations', icon: KeyRound },
     { key: 'knowledge', label: 'Knowledge', icon: BookOpen },
     { key: 'bots', label: 'Bot Setup', icon: Bot },
     { key: 'info', label: 'Info', icon: Save },
@@ -314,13 +273,14 @@ export default function HotelDetail() {
       )}
 
       {/* Tab: Menu */}
-      {activeTab === 'menu' && <RestaurantsTab hotel={hotel} onChanged={loadHotel} />}
+      {activeTab === 'menu' && <RestaurantsTab hotel={hotel} onChanged={loadHotel} onEditVenue={setEditingVenue} />}
 
       {/* Tab: Services */}
-      {activeTab === 'services' && <ServicesTab hotel={hotel} onChanged={loadHotel} />}
+      {activeTab === 'services' && <ServicesTab hotel={hotel} onChanged={loadHotel} onEditService={setEditingService} />}
+      {activeTab === 'integrations' && <IntegrationsTab hotelId={hotel.id} onChanged={loadHotel} />}
 
       {/* Tab: Spa (filtered services) */}
-      {activeTab === 'spa' && <SpaTab hotel={hotel} onChanged={loadHotel} />}
+      {activeTab === 'spa' && <SpaTab hotel={hotel} onChanged={loadHotel} onEditService={setEditingService} />}
 
       {/* Tab: Facilities (overview dashboard) */}
       {activeTab === 'facilities' && <FacilitiesTab hotel={hotel} onChanged={loadHotel} onJumpTab={(t) => setActiveTab(t as any)} />}
@@ -342,27 +302,42 @@ export default function HotelDetail() {
 
       {/* Guest demo overlay panel */}
       {guestOpen && <GuestDemoPanel hotel={hotel} onClose={() => setGuestOpen(false)} />}
+
+      {/* Edit drawers — click-to-edit on every venue/service row */}
+      <EditDrawer open={!!editingVenue} title={editingVenue ? `Edit · ${editingVenue.name}` : ''} onClose={() => setEditingVenue(null)}>
+        {editingVenue && (
+          <VenueEditForm
+            hotelId={hotel.id}
+            venue={editingVenue}
+            integrations={integrations}
+            onSaved={async () => { await loadHotel(); setEditingVenue(null); }}
+            onDeleted={async () => { await loadHotel(); setEditingVenue(null); }}
+            onIntegrationsChanged={refreshIntegrations}
+          />
+        )}
+      </EditDrawer>
+      <EditDrawer open={!!editingService} title={editingService ? `Edit · ${editingService.name}` : ''} onClose={() => setEditingService(null)}>
+        {editingService && (
+          <ServiceEditForm
+            hotelId={hotel.id}
+            service={editingService}
+            integrations={integrations}
+            onSaved={async () => { await loadHotel(); setEditingService(null); }}
+            onDeleted={async () => { await loadHotel(); setEditingService(null); }}
+            onIntegrationsChanged={refreshIntegrations}
+          />
+        )}
+      </EditDrawer>
     </Layout>
   );
 }
 
 // ── Spa Tab ───────────────────────────────────────────────────
 
-function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
+function SpaTab({ hotel, onChanged, onEditService }: { hotel: Hotel; onChanged: () => void; onEditService: (s: Service) => void }) {
   const treatments = (hotel.services || []).filter((sv: any) => sv.category === "spa_treatment");
   const accesses = (hotel.services || []).filter((sv: any) => sv.category === "spa_access");
   const hasSpa = (hotel as any).hasSpa === true;
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-
-  async function toggleBookable(serviceId: string, current: boolean) {
-    setTogglingId(serviceId);
-    try {
-      await updateService(serviceId, { bookable: !current });
-      onChanged();
-    } finally {
-      setTogglingId(null);
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -371,7 +346,7 @@ function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-gray-900">Spa</h3>
           <p className="text-sm text-gray-500">
-            Treatments and access passes. Each entry is either <strong>Bookable</strong> (the concierge handles the booking) or <strong>Info only</strong> (guests are directed to the spa reception). Tap the badge to flip.
+            Treatments and access passes. Each entry is <strong>Bookable</strong> (linked to an integration the concierge can route bookings through) or <strong>Info only</strong> (guests are directed to the spa reception). Tap a row to edit name, price, and the booking integration.
           </p>
         </div>
       </div>
@@ -386,17 +361,12 @@ function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
       <section className="space-y-3">
         <h4 className="text-sm font-semibold text-gray-700">Treatments ({treatments.length})</h4>
         {treatments.map((t: any) => (
-          <div key={t.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <button key={t.id} onClick={() => onEditService(t)} className="text-left w-full bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-gray-50 transition">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-medium text-gray-900">{t.name}</p>
-                <BookableBadge
-                  bookable={!!t.bookable}
-                  bookingMethod={t.bookingMethod}
-                  onToggle={() => toggleBookable(t.id, !!t.bookable)}
-                  busy={togglingId === t.id}
-                  size="xs"
-                />
+                <BookableBadge integration={t.integration} size="xs" />
+                <span className="text-[11px] text-gray-400">tap to edit</span>
               </div>
               {t.description && <p className="text-sm text-gray-500 mt-1">{t.description}</p>}
             </div>
@@ -404,7 +374,7 @@ function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
               {t.price && <p className="font-semibold">{(t.price / 100).toFixed(2)} NOK</p>}
               {t.durationMin && <p className="text-xs text-gray-400">{t.durationMin} min</p>}
             </div>
-          </div>
+          </button>
         ))}
         <ServiceQuickAdd
           hotelId={hotel.id}
@@ -418,17 +388,12 @@ function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
       <section className="space-y-3">
         <h4 className="text-sm font-semibold text-gray-700">Access ({accesses.length})</h4>
         {accesses.map((a: any) => (
-          <div key={a.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <button key={a.id} onClick={() => onEditService(a)} className="text-left w-full bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-gray-50 transition">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-medium text-gray-900">{a.name}</p>
-                <BookableBadge
-                  bookable={!!a.bookable}
-                  bookingMethod={a.bookingMethod}
-                  onToggle={() => toggleBookable(a.id, !!a.bookable)}
-                  busy={togglingId === a.id}
-                  size="xs"
-                />
+                <BookableBadge integration={a.integration} size="xs" />
+                <span className="text-[11px] text-gray-400">tap to edit</span>
               </div>
               {a.description && <p className="text-sm text-gray-500 mt-1">{a.description}</p>}
             </div>
@@ -436,7 +401,7 @@ function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
               {a.price && <p className="font-semibold">{(a.price / 100).toFixed(2)} NOK</p>}
               {a.durationMin && <p className="text-xs text-gray-400">{a.durationMin} min</p>}
             </div>
-          </div>
+          </button>
         ))}
         <ServiceQuickAdd
           hotelId={hotel.id}
@@ -451,27 +416,16 @@ function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
 
 // ── Services Tab (transfers, activities, general) ─────────────
 
-function ServicesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
+function ServicesTab({ hotel, onChanged, onEditService }: { hotel: Hotel; onChanged: () => void; onEditService: (s: Service) => void }) {
   const services = (hotel.services || []).filter(
     (sv: any) => sv.category !== "spa_treatment" && sv.category !== "spa_access"
   );
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-
-  async function toggleBookable(serviceId: string, current: boolean) {
-    setTogglingId(serviceId);
-    try {
-      await updateService(serviceId, { bookable: !current });
-      onChanged();
-    } finally {
-      setTogglingId(null);
-    }
-  }
 
   return (
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-semibold text-gray-900">Services</h3>
-        <p className="text-sm text-gray-500">Transfers, activities, and other guest services. Each is either <strong>Bookable</strong> (concierge handles it) or <strong>Info only</strong> (guests are pointed to the right human). Tap the badge to flip.</p>
+        <p className="text-sm text-gray-500">Transfers, activities, and other guest services. <strong>Bookable</strong> means an integration is linked; <strong>Info only</strong> means the concierge will describe but not book. Tap a row to edit name, price, and the booking integration.</p>
       </div>
 
       {services.length === 0 ? (
@@ -479,18 +433,13 @@ function ServicesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void
       ) : (
         <div className="space-y-2">
           {services.map((sv: any) => (
-            <div key={sv.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <button key={sv.id} onClick={() => onEditService(sv)} className="text-left w-full bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-gray-50 transition">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded text-gray-600">{sv.category || "general"}</span>
                   <span className="font-medium text-gray-900">{sv.name}</span>
-                  <BookableBadge
-                    bookable={!!sv.bookable}
-                    bookingMethod={sv.bookingMethod}
-                    onToggle={() => toggleBookable(sv.id, !!sv.bookable)}
-                    busy={togglingId === sv.id}
-                    size="xs"
-                  />
+                  <BookableBadge integration={sv.integration} size="xs" />
+                  <span className="text-[11px] text-gray-400">tap to edit</span>
                 </div>
                 {sv.description && <p className="text-sm text-gray-500 mt-1">{sv.description}</p>}
               </div>
@@ -498,7 +447,7 @@ function ServicesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void
                 {sv.price && <p className="font-semibold">{(sv.price / 100).toFixed(2)} NOK</p>}
                 {sv.durationMin && <p className="text-xs text-gray-400">{sv.durationMin} min</p>}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -537,7 +486,6 @@ function ServiceQuickAdd({
   const [duration, setDuration] = useState("");
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState<string>(fixedCategory || defaultCategory || "general");
-  const [bookable, setBookable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -553,9 +501,8 @@ function ServiceQuickAdd({
         durationMin: duration ? parseInt(duration, 10) : undefined,
         price: price ? Math.round(parseFloat(price) * 100) : undefined,
         category: (fixedCategory || category) as any,
-        bookable,
       });
-      setName(""); setDescription(""); setDuration(""); setPrice(""); setBookable(false);
+      setName(""); setDescription(""); setDuration(""); setPrice("");
       setOpen(false);
       onSaved?.();
     } catch (err: any) {
@@ -593,13 +540,9 @@ function ServiceQuickAdd({
           </select>
         )}
       </div>
-      <label className="flex items-start gap-2 text-xs text-gray-700 bg-gray-50 border rounded-lg p-2.5">
-        <input type="checkbox" checked={bookable} onChange={(e) => setBookable(e.target.checked)} className="mt-0.5" />
-        <span>
-          <strong>Bookable through the concierge.</strong>{' '}
-          <span className="text-gray-500">When checked, the concierge can book this for guests. Leave unchecked if guests need to handle the booking with the spa reception or another channel.</span>
-        </span>
-      </label>
+      <p className="text-xs text-gray-500 bg-gray-50 border rounded-lg p-2.5">
+        New service is created as <strong>Info only</strong>. After saving, tap the row to link a booking integration and make it bookable.
+      </p>
       {error && <div className="text-xs text-red-600">{error}</div>}
       <div className="flex gap-2">
         <button type="submit" disabled={saving || !name.trim()} className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
@@ -992,15 +935,20 @@ function buildOpeningMessage(hotel: Hotel): string {
   }
 
   // Bookability gap — the concierge is only as good as what we let it book.
-  const venuesInfoOnly = (hotel.venues || []).filter((v: any) => !v.bookable).length;
-  const servicesInfoOnly = (hotel.services || []).filter((s: any) => !s.bookable).length;
-  const roomServiceInfoOnly = hotel.hasRoomService && !hotel.roomServiceBookable;
+  // An offering is bookable iff an Integration is linked and not in error.
+  const isOfferingBookable = (o: any) => !!o?.integration && o.integration.status !== 'error';
+  const venuesInfoOnly = (hotel.venues || []).filter((v: any) => !isOfferingBookable(v)).length;
+  const servicesInfoOnly = (hotel.services || []).filter((s: any) => !isOfferingBookable(s)).length;
+  const roomServiceInfoOnly = hotel.hasRoomService && !isOfferingBookable({ integration: (hotel as any).roomServiceIntegration });
   const totalInfoOnly = venuesInfoOnly + servicesInfoOnly + (roomServiceInfoOnly ? 1 : 0);
+  const hasAnyIntegration = ((hotel as any).integrations || []).length > 0;
 
   // Compose the message
   const greeting = `Hi! I'm your AI Manager for **${hotel.name}**. 👋`;
   const bookabilityNudge = totalInfoOnly > 0
-    ? `\n\n⚠️ **Heads up on bookability.** ${totalInfoOnly} of your offerings are still marked **Info only** — meaning the concierge can describe them but won't actually take a reservation. Guests will be sent to the front desk for those. If you want me to take bookings end-to-end for any of them, just tell me which ones and I'll flip them to **Bookable**.`
+    ? (hasAnyIntegration
+        ? `\n\n⚠️ **Heads up on bookability.** ${totalInfoOnly} of your offerings are still **Info only** — the concierge can describe them but won't take reservations. Tell me which ones to link to one of your integrations and I'll wire them up.`
+        : `\n\n⚠️ **You don't have any booking integrations yet.** That means the concierge can't actually book anything for guests — it can only describe offerings. The fastest fix is the **Manual Queue** integration: bookings go to your dashboard for staff to confirm, no API setup needed. Say "create a manual queue" and I'll set it up and link everything to it.`)
     : '';
 
   if (missing.length === 0) {
@@ -1671,15 +1619,14 @@ const VENUE_KIND_ICON: Record<string, any> = {
   cafe: Coffee,
 };
 
-function RestaurantsTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
+function RestaurantsTab({ hotel, onChanged, onEditVenue }: { hotel: Hotel; onChanged: () => void; onEditVenue: (v: Venue) => void }) {
   const [venues, setVenues] = useState<Venue[]>(hotel.venues || []);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState((hotel.venues || []).length === 0);
 
   // Edit/add UI state
-  const [newVenue, setNewVenue] = useState({ name: '', kind: 'restaurant', hours: '', location: '', bookable: false });
+  const [newVenue, setNewVenue] = useState({ name: '', kind: 'restaurant', hours: '', location: '' });
   const [creatingVenue, setCreatingVenue] = useState(false);
-  const [togglingVenue, setTogglingVenue] = useState<string | null>(null);
 
   // Item-add state, per venue
   const [itemDrafts, setItemDrafts] = useState<Record<string, { name: string; description: string; price: string; category: string; availableForRoomService: boolean }>>({});
@@ -1703,25 +1650,13 @@ function RestaurantsTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => v
         kind: newVenue.kind as any,
         hours: newVenue.hours.trim() || null,
         location: newVenue.location.trim() || null,
-        bookable: newVenue.bookable,
       });
-      setNewVenue({ name: '', kind: 'restaurant', hours: '', location: '', bookable: false });
+      setNewVenue({ name: '', kind: 'restaurant', hours: '', location: '' });
       setShowAddForm(false);
       await refreshVenues();
       onChanged();
     } finally {
       setCreatingVenue(false);
-    }
-  }
-
-  async function toggleVenueBookable(venue: Venue) {
-    setTogglingVenue(venue.id);
-    try {
-      await updateVenue(venue.id, { bookable: !venue.bookable });
-      await refreshVenues();
-      onChanged();
-    } finally {
-      setTogglingVenue(null);
     }
   }
 
@@ -1804,18 +1739,9 @@ function RestaurantsTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => v
               className="px-3 py-2 border rounded-lg text-sm"
             />
           </div>
-          <label className="flex items-start gap-2 text-sm text-gray-700 bg-gray-50 border rounded-lg p-3">
-            <input
-              type="checkbox"
-              checked={newVenue.bookable}
-              onChange={(e) => setNewVenue({ ...newVenue, bookable: e.target.checked })}
-              className="mt-0.5"
-            />
-            <span>
-              <strong>Bookable through the concierge.</strong>{' '}
-              <span className="text-gray-500">If checked, the concierge can take reservations and they'll land in the pending-bookings queue. Leave unchecked if guests need to call the venue or front desk directly.</span>
-            </span>
-          </label>
+          <p className="text-xs text-gray-500 bg-gray-50 border rounded-lg p-3">
+            New venue is created as <strong>Info only</strong>. After saving, tap the venue card to link a booking integration and make it bookable.
+          </p>
           <div className="flex gap-2">
             <button
               onClick={handleCreateVenue}
@@ -1850,15 +1776,14 @@ function RestaurantsTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => v
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="font-semibold text-gray-900">{venue.name}</h4>
-                    <BookableBadge
-                      bookable={!!venue.bookable}
-                      bookingMethod={venue.bookingMethod || null}
-                      onToggle={() => toggleVenueBookable(venue)}
-                      busy={togglingVenue === venue.id}
-                      title={venue.bookable
-                        ? 'Click to make this venue informational only. The concierge will stop taking reservations.'
-                        : 'Click to allow the concierge to take reservations. Bookings will land in the pending-bookings queue.'}
-                    />
+                    <BookableBadge integration={venue.integration} onClick={() => onEditVenue(venue)} />
+                    <button
+                      type="button"
+                      onClick={() => onEditVenue(venue)}
+                      className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                    >
+                      <Pencil size={12} /> Edit
+                    </button>
                   </div>
                   <div className="text-xs text-gray-500 flex flex-wrap gap-3 mt-1">
                     <span>{VENUE_KIND_LABELS[venue.kind] || venue.kind}</span>
@@ -2055,22 +1980,19 @@ function FacilitiesTab({ hotel, onChanged, onJumpTab }: { hotel: Hotel; onChange
   const provisioned = !!(hotel as any).openclawConfig?.active;
 
   // ── Bookability summary ────────────────────────────────────
-  const bookableVenues = (hotel.venues || []).filter((v: any) => v.bookable).length;
-  const bookableServices = (hotel.services || []).filter((s: any) => s.bookable).length;
+  // An offering is bookable iff it has an integration linked and that
+  // integration is not in error state.
+  const isBookable = (offering: any): boolean => {
+    const i = offering?.integration;
+    return !!i && i.status !== 'error';
+  };
+  const roomServiceBookable = isBookable({ integration: (hotel as any).roomServiceIntegration });
+  const bookableVenues = (hotel.venues || []).filter(isBookable).length;
+  const bookableServices = (hotel.services || []).filter(isBookable).length;
   const totalOfferings = venuesCount + servicesCount + (hotel.hasRoomService ? 1 : 0);
-  const bookableOfferings = bookableVenues + bookableServices + (hotel.roomServiceBookable ? 1 : 0);
+  const bookableOfferings = bookableVenues + bookableServices + (hotel.hasRoomService && roomServiceBookable ? 1 : 0);
   const allBookable = totalOfferings > 0 && bookableOfferings === totalOfferings;
   const noneBookable = totalOfferings > 0 && bookableOfferings === 0;
-  const [roomServiceBusy, setRoomServiceBusy] = useState(false);
-  async function toggleRoomService() {
-    setRoomServiceBusy(true);
-    try {
-      await updateHotel(hotel.id, { roomServiceBookable: !hotel.roomServiceBookable } as any);
-      onChanged();
-    } finally {
-      setRoomServiceBusy(false);
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -2129,7 +2051,7 @@ function FacilitiesTab({ hotel, onChanged, onJumpTab }: { hotel: Hotel; onChange
                   </span>
                   {hotel.hasRoomService && (
                     <span className="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2 py-0.5">
-                      Room service: <strong>{hotel.roomServiceBookable ? 'Bookable' : 'Info only'}</strong>
+                      Room service: <strong>{roomServiceBookable ? 'Bookable' : 'Info only'}</strong>
                     </span>
                   )}
                 </div>
@@ -2146,19 +2068,23 @@ function FacilitiesTab({ hotel, onChanged, onJumpTab }: { hotel: Hotel; onChange
           </div>
 
           {hotel.hasRoomService && (
-            <div className="mt-3 pt-3 border-t border-gray-200/60 flex flex-wrap items-center gap-3">
-              <BedDouble size={16} className="text-rose-600" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900">Room service bookable through the concierge?</p>
-                <p className="text-xs text-gray-500">When off, the concierge can show the menu but must direct guests to call the kitchen/front desk to actually order.</p>
+            <div className="mt-3 pt-3 border-t border-gray-200/60 space-y-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <BedDouble size={16} className="text-rose-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900">Room service — link an integration to make it bookable</p>
+                  <p className="text-xs text-gray-500">Without an integration linked, the concierge will show the menu but tell guests how to actually order (e.g. “call extension 9”).</p>
+                </div>
+                <BookableBadge integration={(hotel as any).roomServiceIntegration} />
               </div>
-              <BookableBadge
-                bookable={!!hotel.roomServiceBookable}
-                onToggle={toggleRoomService}
-                busy={roomServiceBusy}
-                title={hotel.roomServiceBookable
-                  ? 'Click to stop accepting room-service orders through the concierge. Guests will be told the right channel instead.'
-                  : 'Click to let the concierge take room-service orders. Orders will land in the pending-bookings queue for staff.'}
+              <IntegrationPicker
+                hotelId={hotel.id}
+                integrations={(hotel as any).integrations || []}
+                value={(hotel as any).roomServiceIntegrationId || ((hotel as any).roomServiceIntegration?.id ?? null)}
+                onChange={async (newId) => {
+                  await updateHotel(hotel.id, { roomServiceIntegrationId: newId } as any);
+                  onChanged();
+                }}
               />
             </div>
           )}

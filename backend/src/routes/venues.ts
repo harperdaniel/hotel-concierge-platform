@@ -6,7 +6,6 @@ const router = Router();
 router.use(authenticate);
 
 const VALID_KINDS = ["restaurant", "bar", "lounge", "room_service", "cafe"];
-const VALID_BOOKING_METHODS = ["internal", "calendar", "external", "manual"];
 
 async function ownsHotel(userId: string, hotelId: string) {
   return prisma.hotel.findFirst({ where: { id: hotelId, userId } });
@@ -51,19 +50,18 @@ router.post("/hotels/:id/venues", async (req, res) => {
     res.status(404).json({ error: "Hotel not found" });
     return;
   }
-  const { name, kind, description, hours, location, bookable, bookingMethod, bookingInstructions } = req.body || {};
+  const { name, kind, description, hours, location, integrationId, bookingInstructions } = req.body || {};
   if (!name || typeof name !== "string") {
     res.status(400).json({ error: "name is required" });
     return;
   }
-  const isBookable = typeof bookable === "boolean" ? bookable : false;
-  let normalizedMethod: string | null = null;
-  if (isBookable) {
-    if (bookingMethod && !VALID_BOOKING_METHODS.includes(bookingMethod)) {
-      res.status(400).json({ error: `bookingMethod must be one of: ${VALID_BOOKING_METHODS.join(", ")}` });
+  // If integrationId is given, verify it belongs to the same hotel.
+  if (integrationId) {
+    const integration = await prisma.integration.findUnique({ where: { id: integrationId } });
+    if (!integration || integration.hotelId !== id) {
+      res.status(400).json({ error: "integrationId does not belong to this hotel" });
       return;
     }
-    normalizedMethod = bookingMethod || "internal"; // default to internal pending queue
   }
   const venue = await prisma.venue.create({
     data: {
@@ -73,8 +71,7 @@ router.post("/hotels/:id/venues", async (req, res) => {
       description: description ?? null,
       hours: hours ?? null,
       location: location ?? null,
-      bookable: isBookable,
-      bookingMethod: normalizedMethod,
+      integrationId: integrationId || null,
       bookingInstructions: bookingInstructions ?? null,
     },
   });
@@ -90,23 +87,25 @@ router.patch("/venues/:id", async (req, res) => {
     res.status(404).json({ error: "Venue not found" });
     return;
   }
-  const allowed = ["name", "kind", "description", "hours", "location", "active", "bookable", "bookingMethod", "bookingInstructions"];
+  const allowed = ["name", "kind", "description", "hours", "location", "active", "integrationId", "bookingInstructions"];
   const updates: Record<string, any> = {};
   for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k];
   if (updates.kind && !VALID_KINDS.includes(updates.kind)) {
     res.status(400).json({ error: "Invalid kind" });
     return;
   }
-  if (updates.bookingMethod && !VALID_BOOKING_METHODS.includes(updates.bookingMethod)) {
-    res.status(400).json({ error: `bookingMethod must be one of: ${VALID_BOOKING_METHODS.join(", ")}` });
-    return;
-  }
-  // If turning off bookable, clear method/instructions to keep state consistent.
-  if (updates.bookable === false) {
-    updates.bookingMethod = null;
-    updates.bookingInstructions = null;
-  } else if (updates.bookable === true && !updates.bookingMethod && !venue.bookingMethod) {
-    updates.bookingMethod = "internal";
+  // If integrationId is being set, verify it belongs to the same hotel.
+  // Allow `null` to unlink. Empty string also unlinks.
+  if ("integrationId" in updates) {
+    if (updates.integrationId === "" || updates.integrationId === null) {
+      updates.integrationId = null;
+    } else {
+      const integration = await prisma.integration.findUnique({ where: { id: updates.integrationId } });
+      if (!integration || integration.hotelId !== venue.hotelId) {
+        res.status(400).json({ error: "integrationId does not belong to this hotel" });
+        return;
+      }
+    }
   }
   const updated = await prisma.venue.update({ where: { id }, data: updates });
   res.json({ venue: updated });

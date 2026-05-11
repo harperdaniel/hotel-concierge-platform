@@ -16,13 +16,18 @@ router.get("/hotels/:id/data", async (req, res) => {
       email: true,
       timezone: true,
       conciergeName: true,
-      roomServiceBookable: true,
       roomServiceBookingNotes: true,
       hasRoomService: true,
+      roomServiceIntegration: true,
       knowledgeEntries: true,
       menuItems: { where: { available: true }, orderBy: { category: "asc" } },
-      services: true,
-      venues: { include: { _count: { select: { menuItems: true } } } },
+      services: { include: { integration: true } },
+      venues: {
+        include: {
+          integration: true,
+          _count: { select: { menuItems: true } },
+        },
+      },
     },
   });
 
@@ -56,38 +61,53 @@ router.post("/bookings", async (req, res) => {
     return;
   }
 
-  // Bookability gate (defence in depth — the bot is also instructed not to call this for INFO-ONLY items).
-  if (type === "room_service" && !hotel.roomServiceBookable) {
-    res.status(409).json({
-      error: "room_service_not_bookable",
-      message: "Room service is informational only at this hotel. Direct the guest to the front desk or kitchen extension to place the order.",
+  // Bookability gate (defence in depth — the bot is also instructed not
+  // to call this for INFO-ONLY items). An offering is bookable iff it
+  // has an integration linked and the integration is not in error state.
+  if (type === "room_service") {
+    const hotelWithInt = await prisma.hotel.findUnique({
+      where: { id: hotelId },
+      select: { roomServiceIntegration: true },
     });
-    return;
+    const integration = hotelWithInt?.roomServiceIntegration;
+    if (!integration || integration.status === "error") {
+      res.status(409).json({
+        error: "room_service_not_bookable",
+        message: "Room service is informational only at this hotel (no working integration is linked). Direct the guest to the front desk or kitchen extension to place the order.",
+      });
+      return;
+    }
   }
   if (type === "table" && venueId) {
-    const venue = await prisma.venue.findUnique({ where: { id: venueId } });
+    const venue = await prisma.venue.findUnique({
+      where: { id: venueId },
+      include: { integration: true },
+    });
     if (!venue || venue.hotelId !== hotelId) {
       res.status(404).json({ error: "Venue not found" });
       return;
     }
-    if (!venue.bookable) {
+    if (!venue.integration || venue.integration.status === "error") {
       res.status(409).json({
         error: "venue_not_bookable",
-        message: `${venue.name} is informational only. Direct the guest to call the venue or the front desk.`,
+        message: `${venue.name} is informational only (no working integration is linked). Direct the guest to call the venue or the front desk.`,
       });
       return;
     }
   }
   if (type === "service" && serviceId) {
-    const service = await prisma.service.findUnique({ where: { id: serviceId } });
+    const service = await prisma.service.findUnique({
+      where: { id: serviceId },
+      include: { integration: true },
+    });
     if (!service || service.hotelId !== hotelId) {
       res.status(404).json({ error: "Service not found" });
       return;
     }
-    if (!service.bookable) {
+    if (!service.integration || service.integration.status === "error") {
       res.status(409).json({
         error: "service_not_bookable",
-        message: `${service.name} is informational only. Direct the guest to the appropriate human channel (front desk, spa reception, etc.).`,
+        message: `${service.name} is informational only (no working integration is linked). Direct the guest to the appropriate human channel (front desk, spa reception, etc.).`,
       });
       return;
     }

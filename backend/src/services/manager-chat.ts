@@ -26,23 +26,35 @@ Help staff add or update:
 - Services (spa treatments, spa access, transfers, activities)
 - Knowledge (amenities, policies, local area, general info)
 - Facility flags (hasGym, hasPool, etc.) and structured detail fields (gymHours, poolHours, barHours, conferenceNotes, petPolicy, etc.)
-- **Bookability flags** — every venue and service is either BOOKABLE (the concierge can take the reservation on the guest's behalf, and staff will see it in their pending-bookings queue) or INFO ONLY (the concierge can describe it and quote prices, but tells the guest to call/walk-in/visit reception to complete). Same for room service at the hotel level (\`roomServiceBookable\`). See the "Bookability" section below.
+- **Bookability through integrations** — a venue/service is BOOKABLE only when it is linked to a configured **Integration** (an external booking pipe). Without an Integration link it's INFO ONLY — the concierge can describe it but won't take a reservation. See the "Integrations & bookability" section below.
 
-# Bookability (CRITICAL — explain this to staff if they're unsure)
+# Integrations & bookability (CRITICAL — explain this clearly to staff)
 
-The concierge MUST know which offerings it can actually book end-to-end versus which are purely informational. Every venue and service has a \`bookable\` flag (default **false** for new entries — safer to under-promise).
+The hotel can have one or more **Integrations** — each is a single configured way for bookings to flow into the hotel's actual systems. Integration kinds in v1:
 
-- \`bookable: true\` → The concierge will take the reservation, save it to the pending-bookings queue, and confirm to the guest. Staff sees it in the dashboard and follows up.
-- \`bookable: false\` → The concierge describes the offering but **always redirects** the guest to call the venue, the front desk, or visit in person. It NEVER promises to book it.
+- \`manual_queue\` — internal pending-bookings queue in the dashboard. No external system. Staff sees the booking, confirms/fulfils manually. Recommended starting point when the hotel has no real PMS/booking software.
+- \`custom_webhook\` — POST the booking JSON to a URL the hotel provides (PMS, Zapier, internal automation, etc.). Needs an endpoint URL and optional auth header.
+- \`email\` — the booking gets emailed to an address the hotel provides.
+- \`opentable\` — OpenTable account (stub in v1; real implementation later).
+- \`google_calendar\` — Google Calendar (stub in v1; real implementation later).
 
-Same for room service: the hotel-level \`roomServiceBookable\` controls whether the concierge can accept room-service orders end-to-end. If false, the concierge shows the menu but says "call extension X to place the order" or similar.
+Every venue and every service has an \`integrationId\` (nullable). Same for room service at the hotel level (\`roomServiceIntegrationId\`).
 
-**Proactively nudge staff to make things bookable.** Whenever you list offerings (during walkthrough, on a \`get_hotel_state\`, when adding new ones), point out anything that's \`bookable: false\` and ask:
-  "I noticed the Sky Bar is currently INFO ONLY — do you want to make it bookable so I can take reservations directly for guests? It'll save your front desk a lot of calls."
+**Bookability is computed, not toggled:**
+- An offering is BOOKABLE iff \`integrationId\` is set AND the linked integration has \`status !== "error"\`.
+- Otherwise it is INFO ONLY — the concierge describes it and redirects the guest to a human channel (front desk, venue phone, walk-in, etc.).
 
-If staff want it bookable but don't have an external system, default \`bookingMethod: "internal"\` — reservations go to the dashboard pending-bookings queue for staff to fulfil manually. That's perfectly fine and is the recommended starting point.
+**Your job around integrations:**
 
-Never silently leave a venue/service as INFO ONLY without naming the trade-off out loud. The whole point of the concierge is convenience for the guest; without bookable flags it becomes a fancy FAQ.
+1. When staff asks about "taking bookings" / "reservations" / "making things bookable", explain the model in plain language: "You need to link the venue/service to an Integration. The simplest one is the **Manual Queue** — it just routes the booking into your dashboard's pending-bookings list so staff can confirm it. No setup, no API. Want me to create one and link your spa treatments to it?"
+
+2. **Proactively nudge.** Whenever you list offerings (during walkthrough, on a \`get_hotel_state\`, when adding new ones), highlight offerings without an integration link and offer to set one up.
+
+3. **Never invent an integration that doesn't exist.** Use \`list_integrations\` first to find the right one to link to. If there is no suitable integration yet, offer to create one (most commonly Manual Queue) and then link it.
+
+4. **Keep secrets in the integration, not in chat.** When staff is configuring a webhook URL or email address, you can store those via \`add_integration\` / \`update_integration\`. For real auth keys/secrets, prefer telling staff to use the dashboard "Integrations" tab — there they can paste keys behind masked inputs. You can still create the integration shell here and they can fill in keys after.
+
+Never silently leave a venue/service as INFO ONLY without naming the trade-off out loud. The whole point of the concierge is convenience for the guest; without integrations it becomes a fancy FAQ.
 
 You have tools to call the backend. Always confirm intent before mutating data, especially in bulk.
 When the user mentions prices in NOK, convert to integer øre (NOK × 100) for the API.
@@ -146,7 +158,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "add_venue",
-      description: "Create a new venue. A venue is a place inside the hotel that serves food/drinks (restaurant, bar, lounge, cafe, or the room-service kitchen). Set `bookable: true` ONLY if the concierge is allowed to take reservations for this venue end-to-end (default false). Mention to staff that bookable=false means the concierge will redirect guests to the front desk for any reservation.",
+      description: "Create a new venue. A venue is a place inside the hotel that serves food/drinks. Pass integrationId to immediately make it bookable through an existing Integration; otherwise it starts as INFO ONLY and you can link an integration later. Use list_integrations first to find the right id.",
       parameters: {
         type: "object",
         properties: {
@@ -158,9 +170,8 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           description: { type: "string" },
           hours: { type: "string", description: "e.g. '17:00-22:00'" },
           location: { type: "string", description: "e.g. 'Lobby level' or '12th floor'" },
-          bookable: { type: "boolean", description: "Whether the concierge can take reservations for this venue end-to-end (default false). Confirm with staff before setting true." },
-          bookingMethod: { type: "string", enum: ["internal", "calendar", "external", "manual"], description: "How bookings flow when bookable=true. 'internal' (pending queue, recommended starting point) is the default if bookable=true and no method is specified." },
-          bookingInstructions: { type: "string", description: "Optional notes about how reservations are fulfilled (e.g. 'Goes to kitchen printer', 'Spa receptionist confirms within 1h')." },
+          integrationId: { type: "string", description: "Optional id of an existing Integration to link. When set, the venue is BOOKABLE through that integration. Use list_integrations to discover ids." },
+          bookingInstructions: { type: "string", description: "Optional fulfilment notes for the concierge (e.g. 'Walk-in only after 21:00'). Not shown to guests verbatim." },
         },
         required: ["name", "kind"],
       },
@@ -170,7 +181,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "update_venue",
-      description: "Update a venue's hours, name, location, bookability, or other fields. Use list_venues first to get the venue ID. To make a venue bookable, set bookable=true and (optionally) bookingMethod. To stop accepting reservations, set bookable=false — the system will clear method/instructions automatically.",
+      description: "Update a venue's fields. Use list_venues first to get the venue id. To make a venue bookable, pass integrationId pointing at an existing Integration (use list_integrations to find one). To stop accepting reservations, pass integrationId as null — the venue becomes INFO ONLY.",
       parameters: {
         type: "object",
         properties: {
@@ -181,8 +192,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           hours: { type: "string" },
           location: { type: "string" },
           active: { type: "boolean" },
-          bookable: { type: "boolean" },
-          bookingMethod: { type: "string", enum: ["internal", "calendar", "external", "manual"] },
+          integrationId: { type: ["string", "null"], description: "Set to an Integration id to make the venue bookable; pass null to revert to info-only." },
           bookingInstructions: { type: "string" },
         },
         required: ["venueId"],
@@ -238,7 +248,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "add_service",
-      description: "Add a service (spa treatment, spa access, transfer, activity, etc.). Price in øre. Default bookable=false — the concierge will describe it but redirect guests to a human for the actual booking unless staff confirms bookable=true.",
+      description: "Add a service (spa treatment, spa access, transfer, activity, etc.). Price in øre. Without integrationId the service starts INFO ONLY; link to an existing Integration to make it bookable.",
       parameters: {
         type: "object",
         properties: {
@@ -251,9 +261,8 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             enum: ["spa_treatment", "spa_access", "transfer", "activity", "general"],
             description: "What kind of service this is. Use 'spa_treatment' for massages/facials/etc, 'spa_access' for things like sauna/pool day passes, 'transfer' for airport/taxi, 'activity' for tours/excursions, 'general' for anything else.",
           },
-          bookable: { type: "boolean", description: "Whether the concierge can book this service end-to-end (default false). When true, requests land in the staff pending-bookings queue." },
-          bookingMethod: { type: "string", enum: ["internal", "calendar", "external", "manual"], description: "How bookings flow. Default 'internal' when bookable=true." },
-          bookingInstructions: { type: "string", description: "Optional fulfilment notes for staff and the concierge." },
+          integrationId: { type: "string", description: "Optional id of an existing Integration. When set, the service is BOOKABLE through that integration. Use list_integrations." },
+          bookingInstructions: { type: "string", description: "Optional fulfilment notes (e.g. 'Two-hour notice required')." },
         },
         required: ["name"],
       },
@@ -262,32 +271,72 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "set_service_bookability",
-      description: "Flip the bookable flag (and optionally bookingMethod/Instructions) for an existing service. Use this when staff agrees to make an INFO-ONLY service bookable, or vice versa.",
+      name: "update_service",
+      description: "Update an existing service — change name, price, description, link/unlink an Integration, etc.",
       parameters: {
         type: "object",
         properties: {
           serviceId: { type: "string" },
-          bookable: { type: "boolean" },
-          bookingMethod: { type: "string", enum: ["internal", "calendar", "external", "manual"] },
+          name: { type: "string" },
+          description: { type: "string" },
+          durationMin: { type: "number" },
+          price: { type: "number", description: "Price in øre." },
+          category: { type: "string", enum: ["spa_treatment", "spa_access", "transfer", "activity", "general"] },
+          integrationId: { type: ["string", "null"], description: "Set to an Integration id to make bookable; null to revert to info-only." },
           bookingInstructions: { type: "string" },
         },
-        required: ["serviceId", "bookable"],
+        required: ["serviceId"],
       },
     },
   },
   {
     type: "function",
     function: {
-      name: "set_room_service_bookability",
-      description: "Toggle whether the hotel actually accepts room-service orders through the concierge (hotel-level). When false, the concierge will describe room-service items but tells the guest how to order (e.g. call extension X). When true, the concierge takes the order and it lands in the staff pending-bookings queue.",
+      name: "link_room_service_integration",
+      description: "Link or unlink the hotel-level room-service integration. Pass integrationId (use list_integrations) to make room service bookable; pass null to revert to info-only. roomServiceBookingNotes is free-text internal context for the concierge.",
       parameters: {
         type: "object",
         properties: {
-          roomServiceBookable: { type: "boolean" },
-          roomServiceBookingNotes: { type: "string", description: "Optional internal notes about how room-service orders flow (e.g. 'Printed in main kitchen at the pass'). Not shown to guests verbatim." },
+          integrationId: { type: ["string", "null"] },
+          roomServiceBookingNotes: { type: "string" },
         },
-        required: ["roomServiceBookable"],
+        required: ["integrationId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_integrations",
+      description: "List the hotel's configured booking integrations (manual queue, webhooks, email, OpenTable, Google Calendar). Returns id, name, kind, endpoint, status. Use this BEFORE linking integrations to offerings.",
+      parameters: { type: "object", properties: {}, required: [] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_integration",
+      description: "Create a new booking integration. The simplest one to recommend to staff who don't have an external system is `manual_queue` — it just sends bookings to the dashboard's pending-bookings queue for staff to confirm. For `custom_webhook` provide an endpoint URL. For `email` put the recipient address in the endpoint field. Do NOT ask the user to paste secret API keys in chat; tell them to use the dashboard Integrations tab to enter masked credentials.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Human label, e.g. 'Manual queue — main building' or 'Spa webhook'" },
+          kind: { type: "string", enum: ["manual_queue", "custom_webhook", "email", "opentable", "google_calendar"] },
+          endpoint: { type: "string", description: "URL for webhook, email address for email, account/calendar id for opentable/gcal. Not needed for manual_queue." },
+        },
+        required: ["name", "kind"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_integration",
+      description: "Delete a booking integration. Any offerings linked to it are automatically unlinked and revert to info-only.",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "string" } },
+        required: ["id"],
       },
     },
   },
@@ -487,11 +536,12 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
 
     case "add_venue": {
       const validKinds = ["restaurant", "bar", "lounge", "room_service", "cafe"];
-      const validMethods = ["internal", "calendar", "external", "manual"];
-      const isBookable = args.bookable === true;
-      let method: string | null = null;
-      if (isBookable) {
-        method = validMethods.includes(args.bookingMethod) ? args.bookingMethod : "internal";
+      // If integrationId is given, verify it belongs to this hotel.
+      if (args.integrationId) {
+        const integration = await prisma.integration.findUnique({ where: { id: args.integrationId } });
+        if (!integration || integration.hotelId !== hotelId) {
+          return { error: "integrationId does not belong to this hotel" };
+        }
       }
       const venue = await prisma.venue.create({
         data: {
@@ -501,8 +551,7 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
           description: args.description || null,
           hours: args.hours || null,
           location: args.location || null,
-          bookable: isBookable,
-          bookingMethod: method,
+          integrationId: args.integrationId || null,
           bookingInstructions: args.bookingInstructions || null,
         },
       });
@@ -512,18 +561,18 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
     case "update_venue": {
       const venue = await prisma.venue.findUnique({ where: { id: args.venueId } });
       if (!venue || venue.hotelId !== hotelId) return { error: "Venue not found" };
-      const allowed = ["name", "kind", "description", "hours", "location", "active", "bookable", "bookingMethod", "bookingInstructions"];
-      const validMethods = ["internal", "calendar", "external", "manual"];
+      const allowed = ["name", "kind", "description", "hours", "location", "active", "integrationId", "bookingInstructions"];
       const updates: Record<string, any> = {};
       for (const k of allowed) if (k in args) updates[k] = args[k];
-      if (updates.bookingMethod && !validMethods.includes(updates.bookingMethod)) {
-        return { error: `bookingMethod must be one of: ${validMethods.join(", ")}` };
-      }
-      if (updates.bookable === false) {
-        updates.bookingMethod = null;
-        updates.bookingInstructions = null;
-      } else if (updates.bookable === true && !updates.bookingMethod && !venue.bookingMethod) {
-        updates.bookingMethod = "internal";
+      if ("integrationId" in updates) {
+        if (updates.integrationId === "" || updates.integrationId === null) {
+          updates.integrationId = null;
+        } else {
+          const integration = await prisma.integration.findUnique({ where: { id: updates.integrationId } });
+          if (!integration || integration.hotelId !== hotelId) {
+            return { error: "integrationId does not belong to this hotel" };
+          }
+        }
       }
       if (Object.keys(updates).length === 0) return { error: "No updates" };
       const updated = await prisma.venue.update({ where: { id: args.venueId }, data: updates });
@@ -597,11 +646,11 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
 
     case "add_service": {
       const validCategories = ["spa_treatment", "spa_access", "transfer", "activity", "general"];
-      const validMethods = ["internal", "calendar", "external", "manual"];
-      const isBookable = args.bookable === true;
-      let method: string | null = null;
-      if (isBookable) {
-        method = validMethods.includes(args.bookingMethod) ? args.bookingMethod : "internal";
+      if (args.integrationId) {
+        const integration = await prisma.integration.findUnique({ where: { id: args.integrationId } });
+        if (!integration || integration.hotelId !== hotelId) {
+          return { error: "integrationId does not belong to this hotel" };
+        }
       }
       const service = await prisma.service.create({
         data: {
@@ -611,41 +660,92 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
           durationMin: typeof args.durationMin === "number" ? Math.round(args.durationMin) : null,
           price: typeof args.price === "number" ? Math.round(args.price) : null,
           category: validCategories.includes(args.category) ? args.category : "general",
-          bookable: isBookable,
-          bookingMethod: method,
+          integrationId: args.integrationId || null,
           bookingInstructions: args.bookingInstructions || null,
         },
       });
       return { added: true, service };
     }
 
-    case "set_service_bookability": {
+    case "update_service": {
       const service = await prisma.service.findUnique({ where: { id: args.serviceId } });
       if (!service || service.hotelId !== hotelId) return { error: "Service not found" };
-      const validMethods = ["internal", "calendar", "external", "manual"];
-      const updates: Record<string, any> = { bookable: args.bookable === true };
-      if (args.bookable === true) {
-        const method = validMethods.includes(args.bookingMethod) ? args.bookingMethod : (service.bookingMethod || "internal");
-        updates.bookingMethod = method;
-        if (typeof args.bookingInstructions === "string") updates.bookingInstructions = args.bookingInstructions;
-      } else {
-        updates.bookingMethod = null;
-        updates.bookingInstructions = null;
+      const allowed = ["name", "description", "durationMin", "price", "category", "integrationId", "bookingInstructions"];
+      const updates: Record<string, any> = {};
+      for (const k of allowed) if (k in args) updates[k] = args[k];
+      if (typeof updates.price === "number") updates.price = Math.round(updates.price);
+      if (typeof updates.durationMin === "number") updates.durationMin = Math.round(updates.durationMin);
+      if ("integrationId" in updates) {
+        if (updates.integrationId === "" || updates.integrationId === null) {
+          updates.integrationId = null;
+        } else {
+          const integration = await prisma.integration.findUnique({ where: { id: updates.integrationId } });
+          if (!integration || integration.hotelId !== hotelId) {
+            return { error: "integrationId does not belong to this hotel" };
+          }
+        }
       }
+      if (Object.keys(updates).length === 0) return { error: "No updates" };
       const updated = await prisma.service.update({ where: { id: args.serviceId }, data: updates });
       return { updated: true, service: updated };
     }
 
-    case "set_room_service_bookability": {
-      const updates: Record<string, any> = { roomServiceBookable: args.roomServiceBookable === true };
-      if (args.roomServiceBookable === true && typeof args.roomServiceBookingNotes === "string") {
+    case "link_room_service_integration": {
+      const updates: Record<string, any> = {};
+      if (args.integrationId === null || args.integrationId === "") {
+        updates.roomServiceIntegrationId = null;
+      } else {
+        const integration = await prisma.integration.findUnique({ where: { id: args.integrationId } });
+        if (!integration || integration.hotelId !== hotelId) {
+          return { error: "integrationId does not belong to this hotel" };
+        }
+        updates.roomServiceIntegrationId = args.integrationId;
+      }
+      if (typeof args.roomServiceBookingNotes === "string") {
         updates.roomServiceBookingNotes = args.roomServiceBookingNotes;
-      } else if (args.roomServiceBookable === false) {
-        updates.roomServiceBookingNotes = null;
       }
       const hotel = await prisma.hotel.update({ where: { id: hotelId }, data: updates });
       const { smtpPass: _smtpPass, smtpUser: _smtpUser, ...rest } = hotel as any;
       return { updated: true, hotel: rest };
+    }
+
+    case "list_integrations": {
+      const integrations = await prisma.integration.findMany({
+        where: { hotelId },
+        select: {
+          id: true, name: true, kind: true, endpoint: true, status: true,
+          lastTestedAt: true, lastError: true, createdAt: true,
+          _count: { select: { venues: true, services: true, hotelsAsRoomService: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      return { integrations };
+    }
+
+    case "add_integration": {
+      const validKinds = ["manual_queue", "custom_webhook", "email", "opentable", "google_calendar"];
+      if (!validKinds.includes(args.kind)) return { error: `kind must be one of: ${validKinds.join(", ")}` };
+      const integration = await prisma.integration.create({
+        data: {
+          hotelId,
+          name: args.name,
+          kind: args.kind,
+          endpoint: args.endpoint || null,
+          status: "untested",
+        },
+      });
+      return {
+        added: true,
+        integration: { id: integration.id, name: integration.name, kind: integration.kind, endpoint: integration.endpoint, status: integration.status },
+        note: "Secret keys/auth headers (if any) must be entered by staff in the dashboard's Integrations tab — they are masked there. The integration is usable right away for manual_queue and email kinds.",
+      };
+    }
+
+    case "delete_integration": {
+      const integration = await prisma.integration.findUnique({ where: { id: args.id } });
+      if (!integration || integration.hotelId !== hotelId) return { error: "Integration not found" };
+      await prisma.integration.delete({ where: { id: args.id } });
+      return { deleted: true };
     }
 
     case "add_knowledge": {

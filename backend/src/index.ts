@@ -9,6 +9,7 @@ import guestRoutes from "./routes/guest";
 import provisioningRoutes from "./routes/provisioning";
 import managerRoutes from "./routes/manager";
 import venueRoutes from "./routes/venues";
+import integrationRoutes from "./routes/integrations";
 
 const app = express();
 
@@ -48,6 +49,7 @@ app.use("/api/guest", guestRoutes);
 app.use("/api/hotels", provisioningRoutes);
 app.use("/api/manager", managerRoutes);
 app.use("/api", venueRoutes); // /api/hotels/:id/venues, /api/venues/:id, /api/menu-items/:id
+app.use("/api", integrationRoutes); // /api/hotels/:id/integrations, /api/integrations/:id
 
 // ── 404 ───────────────────────────────────────────────
 app.use((_req, res) => {
