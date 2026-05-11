@@ -3,7 +3,7 @@ import { useParams, Link, useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Layout from '../components/Layout';
-import { getHotel, updateHotel, createKnowledge, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, listVenues, createVenue, addVenueMenuItem, createService, type Hotel, type MenuItem, type KnowledgeEntry, type Service, type ProvisionStatus, type ChatMsg, type Venue } from '../lib/api';
+import { getHotel, updateHotel, createKnowledge, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, listVenues, createVenue, addVenueMenuItem, createService, type Hotel, type KnowledgeEntry, type ProvisionStatus, type ChatMsg, type Venue } from '../lib/api';
 import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves, Building2, Wine, Dumbbell, Briefcase, Plane, Dog, BedDouble, Coffee, ChefHat, UserCircle } from 'lucide-react';
 
 export default function HotelDetail() {
@@ -826,7 +826,7 @@ function ManagerChatTab({ hotel, onDataChanged, fullHeight = false }: { hotel: H
           onChange={(e) => setInput(e.target.value)}
           disabled={!staffToken || sending}
           placeholder="Type or speak…"
-          className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-blue-500 outline-none"
         />
         <button
           type="submit"
@@ -2280,7 +2280,7 @@ function GuestDemoPanel({ hotel, onClose }: { hotel: Hotel; onClose: () => void 
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Try 'I'd like a table for 2 tonight at 8'…"
-            className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+            className="flex-1 min-w-0 px-3 py-2 border rounded-lg text-base sm:text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
           />
           <button
             type="submit"

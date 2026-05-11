@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* iOS Safari: prevent auto-zoom on focus by ensuring inputs are >= 16px on small screens.
+   Apply to inputs/textareas/selects on viewports under the sm breakpoint. */
+@media (max-width: 639px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* AI Manager chat markdown styling */
 .chat-md { word-break: break-word; overflow-wrap: anywhere; max-width: 100%; }
 .chat-md p { margin: 0; }
