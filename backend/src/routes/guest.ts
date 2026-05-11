@@ -16,6 +16,9 @@ router.get("/hotels/:id/data", async (req, res) => {
       email: true,
       timezone: true,
       conciergeName: true,
+      roomServiceBookable: true,
+      roomServiceBookingNotes: true,
+      hasRoomService: true,
       knowledgeEntries: true,
       menuItems: { where: { available: true }, orderBy: { category: "asc" } },
       services: true,
@@ -34,15 +37,15 @@ router.get("/hotels/:id/data", async (req, res) => {
 // ── Create a booking (from concierge agent) ───────────
 
 router.post("/bookings", async (req, res) => {
-  const { hotelId, type, guestName, guestRoom, details } = req.body;
+  const { hotelId, type, guestName, guestRoom, details, venueId, serviceId } = req.body;
 
   if (!hotelId || !type || !guestName || !details) {
     res.status(400).json({ error: "Missing required fields: hotelId, type, guestName, details" });
     return;
   }
 
-  if (!["table", "room_service"].includes(type)) {
-    res.status(400).json({ error: "Type must be 'table' or 'room_service'" });
+  if (!["table", "room_service", "service"].includes(type)) {
+    res.status(400).json({ error: "Type must be 'table', 'room_service', or 'service'" });
     return;
   }
 
@@ -51,6 +54,43 @@ router.post("/bookings", async (req, res) => {
   if (!hotel) {
     res.status(404).json({ error: "Hotel not found" });
     return;
+  }
+
+  // Bookability gate (defence in depth — the bot is also instructed not to call this for INFO-ONLY items).
+  if (type === "room_service" && !hotel.roomServiceBookable) {
+    res.status(409).json({
+      error: "room_service_not_bookable",
+      message: "Room service is informational only at this hotel. Direct the guest to the front desk or kitchen extension to place the order.",
+    });
+    return;
+  }
+  if (type === "table" && venueId) {
+    const venue = await prisma.venue.findUnique({ where: { id: venueId } });
+    if (!venue || venue.hotelId !== hotelId) {
+      res.status(404).json({ error: "Venue not found" });
+      return;
+    }
+    if (!venue.bookable) {
+      res.status(409).json({
+        error: "venue_not_bookable",
+        message: `${venue.name} is informational only. Direct the guest to call the venue or the front desk.`,
+      });
+      return;
+    }
+  }
+  if (type === "service" && serviceId) {
+    const service = await prisma.service.findUnique({ where: { id: serviceId } });
+    if (!service || service.hotelId !== hotelId) {
+      res.status(404).json({ error: "Service not found" });
+      return;
+    }
+    if (!service.bookable) {
+      res.status(409).json({
+        error: "service_not_bookable",
+        message: `${service.name} is informational only. Direct the guest to the appropriate human channel (front desk, spa reception, etc.).`,
+      });
+      return;
+    }
   }
 
   const booking = await prisma.booking.create({

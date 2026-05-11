@@ -26,6 +26,23 @@ Help staff add or update:
 - Services (spa treatments, spa access, transfers, activities)
 - Knowledge (amenities, policies, local area, general info)
 - Facility flags (hasGym, hasPool, etc.) and structured detail fields (gymHours, poolHours, barHours, conferenceNotes, petPolicy, etc.)
+- **Bookability flags** — every venue and service is either BOOKABLE (the concierge can take the reservation on the guest's behalf, and staff will see it in their pending-bookings queue) or INFO ONLY (the concierge can describe it and quote prices, but tells the guest to call/walk-in/visit reception to complete). Same for room service at the hotel level (\`roomServiceBookable\`). See the "Bookability" section below.
+
+# Bookability (CRITICAL — explain this to staff if they're unsure)
+
+The concierge MUST know which offerings it can actually book end-to-end versus which are purely informational. Every venue and service has a \`bookable\` flag (default **false** for new entries — safer to under-promise).
+
+- \`bookable: true\` → The concierge will take the reservation, save it to the pending-bookings queue, and confirm to the guest. Staff sees it in the dashboard and follows up.
+- \`bookable: false\` → The concierge describes the offering but **always redirects** the guest to call the venue, the front desk, or visit in person. It NEVER promises to book it.
+
+Same for room service: the hotel-level \`roomServiceBookable\` controls whether the concierge can accept room-service orders end-to-end. If false, the concierge shows the menu but says "call extension X to place the order" or similar.
+
+**Proactively nudge staff to make things bookable.** Whenever you list offerings (during walkthrough, on a \`get_hotel_state\`, when adding new ones), point out anything that's \`bookable: false\` and ask:
+  "I noticed the Sky Bar is currently INFO ONLY — do you want to make it bookable so I can take reservations directly for guests? It'll save your front desk a lot of calls."
+
+If staff want it bookable but don't have an external system, default \`bookingMethod: "internal"\` — reservations go to the dashboard pending-bookings queue for staff to fulfil manually. That's perfectly fine and is the recommended starting point.
+
+Never silently leave a venue/service as INFO ONLY without naming the trade-off out loud. The whole point of the concierge is convenience for the guest; without bookable flags it becomes a fancy FAQ.
 
 You have tools to call the backend. Always confirm intent before mutating data, especially in bulk.
 When the user mentions prices in NOK, convert to integer øre (NOK × 100) for the API.
@@ -129,7 +146,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "add_venue",
-      description: "Create a new venue. A venue is a place inside the hotel that serves food/drinks (restaurant, bar, lounge, cafe, or the room-service kitchen).",
+      description: "Create a new venue. A venue is a place inside the hotel that serves food/drinks (restaurant, bar, lounge, cafe, or the room-service kitchen). Set `bookable: true` ONLY if the concierge is allowed to take reservations for this venue end-to-end (default false). Mention to staff that bookable=false means the concierge will redirect guests to the front desk for any reservation.",
       parameters: {
         type: "object",
         properties: {
@@ -141,6 +158,9 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           description: { type: "string" },
           hours: { type: "string", description: "e.g. '17:00-22:00'" },
           location: { type: "string", description: "e.g. 'Lobby level' or '12th floor'" },
+          bookable: { type: "boolean", description: "Whether the concierge can take reservations for this venue end-to-end (default false). Confirm with staff before setting true." },
+          bookingMethod: { type: "string", enum: ["internal", "calendar", "external", "manual"], description: "How bookings flow when bookable=true. 'internal' (pending queue, recommended starting point) is the default if bookable=true and no method is specified." },
+          bookingInstructions: { type: "string", description: "Optional notes about how reservations are fulfilled (e.g. 'Goes to kitchen printer', 'Spa receptionist confirms within 1h')." },
         },
         required: ["name", "kind"],
       },
@@ -150,7 +170,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "update_venue",
-      description: "Update a venue's hours, name, location, or other fields. Use list_venues first to get the venue ID.",
+      description: "Update a venue's hours, name, location, bookability, or other fields. Use list_venues first to get the venue ID. To make a venue bookable, set bookable=true and (optionally) bookingMethod. To stop accepting reservations, set bookable=false — the system will clear method/instructions automatically.",
       parameters: {
         type: "object",
         properties: {
@@ -161,6 +181,9 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           hours: { type: "string" },
           location: { type: "string" },
           active: { type: "boolean" },
+          bookable: { type: "boolean" },
+          bookingMethod: { type: "string", enum: ["internal", "calendar", "external", "manual"] },
+          bookingInstructions: { type: "string" },
         },
         required: ["venueId"],
       },
@@ -215,7 +238,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "add_service",
-      description: "Add a service (spa treatment, spa access, transfer, activity, etc.). Price in øre.",
+      description: "Add a service (spa treatment, spa access, transfer, activity, etc.). Price in øre. Default bookable=false — the concierge will describe it but redirect guests to a human for the actual booking unless staff confirms bookable=true.",
       parameters: {
         type: "object",
         properties: {
@@ -228,8 +251,43 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
             enum: ["spa_treatment", "spa_access", "transfer", "activity", "general"],
             description: "What kind of service this is. Use 'spa_treatment' for massages/facials/etc, 'spa_access' for things like sauna/pool day passes, 'transfer' for airport/taxi, 'activity' for tours/excursions, 'general' for anything else.",
           },
+          bookable: { type: "boolean", description: "Whether the concierge can book this service end-to-end (default false). When true, requests land in the staff pending-bookings queue." },
+          bookingMethod: { type: "string", enum: ["internal", "calendar", "external", "manual"], description: "How bookings flow. Default 'internal' when bookable=true." },
+          bookingInstructions: { type: "string", description: "Optional fulfilment notes for staff and the concierge." },
         },
         required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_service_bookability",
+      description: "Flip the bookable flag (and optionally bookingMethod/Instructions) for an existing service. Use this when staff agrees to make an INFO-ONLY service bookable, or vice versa.",
+      parameters: {
+        type: "object",
+        properties: {
+          serviceId: { type: "string" },
+          bookable: { type: "boolean" },
+          bookingMethod: { type: "string", enum: ["internal", "calendar", "external", "manual"] },
+          bookingInstructions: { type: "string" },
+        },
+        required: ["serviceId", "bookable"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_room_service_bookability",
+      description: "Toggle whether the hotel actually accepts room-service orders through the concierge (hotel-level). When false, the concierge will describe room-service items but tells the guest how to order (e.g. call extension X). When true, the concierge takes the order and it lands in the staff pending-bookings queue.",
+      parameters: {
+        type: "object",
+        properties: {
+          roomServiceBookable: { type: "boolean" },
+          roomServiceBookingNotes: { type: "string", description: "Optional internal notes about how room-service orders flow (e.g. 'Printed in main kitchen at the pass'). Not shown to guests verbatim." },
+        },
+        required: ["roomServiceBookable"],
       },
     },
   },
@@ -429,6 +487,12 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
 
     case "add_venue": {
       const validKinds = ["restaurant", "bar", "lounge", "room_service", "cafe"];
+      const validMethods = ["internal", "calendar", "external", "manual"];
+      const isBookable = args.bookable === true;
+      let method: string | null = null;
+      if (isBookable) {
+        method = validMethods.includes(args.bookingMethod) ? args.bookingMethod : "internal";
+      }
       const venue = await prisma.venue.create({
         data: {
           hotelId,
@@ -437,6 +501,9 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
           description: args.description || null,
           hours: args.hours || null,
           location: args.location || null,
+          bookable: isBookable,
+          bookingMethod: method,
+          bookingInstructions: args.bookingInstructions || null,
         },
       });
       return { added: true, venue };
@@ -445,9 +512,19 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
     case "update_venue": {
       const venue = await prisma.venue.findUnique({ where: { id: args.venueId } });
       if (!venue || venue.hotelId !== hotelId) return { error: "Venue not found" };
-      const allowed = ["name", "kind", "description", "hours", "location", "active"];
+      const allowed = ["name", "kind", "description", "hours", "location", "active", "bookable", "bookingMethod", "bookingInstructions"];
+      const validMethods = ["internal", "calendar", "external", "manual"];
       const updates: Record<string, any> = {};
       for (const k of allowed) if (k in args) updates[k] = args[k];
+      if (updates.bookingMethod && !validMethods.includes(updates.bookingMethod)) {
+        return { error: `bookingMethod must be one of: ${validMethods.join(", ")}` };
+      }
+      if (updates.bookable === false) {
+        updates.bookingMethod = null;
+        updates.bookingInstructions = null;
+      } else if (updates.bookable === true && !updates.bookingMethod && !venue.bookingMethod) {
+        updates.bookingMethod = "internal";
+      }
       if (Object.keys(updates).length === 0) return { error: "No updates" };
       const updated = await prisma.venue.update({ where: { id: args.venueId }, data: updates });
       return { updated: true, venue: updated };
@@ -520,6 +597,12 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
 
     case "add_service": {
       const validCategories = ["spa_treatment", "spa_access", "transfer", "activity", "general"];
+      const validMethods = ["internal", "calendar", "external", "manual"];
+      const isBookable = args.bookable === true;
+      let method: string | null = null;
+      if (isBookable) {
+        method = validMethods.includes(args.bookingMethod) ? args.bookingMethod : "internal";
+      }
       const service = await prisma.service.create({
         data: {
           hotelId,
@@ -528,9 +611,41 @@ async function executeTool(name: string, args: any, hotelId: string): Promise<an
           durationMin: typeof args.durationMin === "number" ? Math.round(args.durationMin) : null,
           price: typeof args.price === "number" ? Math.round(args.price) : null,
           category: validCategories.includes(args.category) ? args.category : "general",
+          bookable: isBookable,
+          bookingMethod: method,
+          bookingInstructions: args.bookingInstructions || null,
         },
       });
       return { added: true, service };
+    }
+
+    case "set_service_bookability": {
+      const service = await prisma.service.findUnique({ where: { id: args.serviceId } });
+      if (!service || service.hotelId !== hotelId) return { error: "Service not found" };
+      const validMethods = ["internal", "calendar", "external", "manual"];
+      const updates: Record<string, any> = { bookable: args.bookable === true };
+      if (args.bookable === true) {
+        const method = validMethods.includes(args.bookingMethod) ? args.bookingMethod : (service.bookingMethod || "internal");
+        updates.bookingMethod = method;
+        if (typeof args.bookingInstructions === "string") updates.bookingInstructions = args.bookingInstructions;
+      } else {
+        updates.bookingMethod = null;
+        updates.bookingInstructions = null;
+      }
+      const updated = await prisma.service.update({ where: { id: args.serviceId }, data: updates });
+      return { updated: true, service: updated };
+    }
+
+    case "set_room_service_bookability": {
+      const updates: Record<string, any> = { roomServiceBookable: args.roomServiceBookable === true };
+      if (args.roomServiceBookable === true && typeof args.roomServiceBookingNotes === "string") {
+        updates.roomServiceBookingNotes = args.roomServiceBookingNotes;
+      } else if (args.roomServiceBookable === false) {
+        updates.roomServiceBookingNotes = null;
+      }
+      const hotel = await prisma.hotel.update({ where: { id: hotelId }, data: updates });
+      const { smtpPass: _smtpPass, smtpUser: _smtpUser, ...rest } = hotel as any;
+      return { updated: true, hotel: rest };
     }
 
     case "add_knowledge": {

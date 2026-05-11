@@ -58,6 +58,17 @@ model Hotel {
   // ALWAYS behaves as this human and never reveals it's an AI.
   conciergeName String @default("Alfred Pennyworth")
 
+  // Whether room-service orders are actually fulfillable end-to-end at this
+  // hotel (kitchen + delivery wired up via the platform's pending-orders
+  // workflow OR an external integration). When false, the concierge will
+  // describe the menu but NEVER promise to deliver; it redirects to the
+  // appropriate venue or the front desk.
+  roomServiceBookable Boolean @default(false)
+  // Optional notes shown to the concierge about HOW room-service bookings
+  // are fulfilled (e.g. "Calls go to extension 9", "Orders printed in main
+  // kitchen"). Surfaced in the bot context only, never to guests verbatim.
+  roomServiceBookingNotes String?
+
   // Structured details for the simpler facilities (knowledge-style fields
   // displayed on the Facilities tab and pulled into the concierge context)
   spaHours         String?
@@ -109,6 +120,25 @@ model Venue {
   hours       String? // "17:00-22:00" or freeform
   location    String? // "Lobby level", "12th floor"
   active      Boolean @default(true)
+
+  // ── Bookability ────────────────────────────────────
+  // bookable=true means the concierge can actually take a reservation
+  // here end-to-end (staff will see it in the dashboard pending-bookings
+  // queue, or an external integration will receive it). bookable=false
+  // means the venue is INFORMATIONAL ONLY — the concierge can describe
+  // it, share hours and menu, but MUST direct the guest to call the
+  // venue, the front desk, or walk in. Default false (safer for new hotels).
+  bookable           Boolean @default(false)
+  // How bookings flow when bookable=true:
+  //   "internal"   — POST /api/guest/bookings (pending queue)
+  //   "calendar"   — Google Calendar / iCal integration (future)
+  //   "external"   — third-party API like OpenTable (future)
+  //   "manual"     — staff promises to follow up out-of-band; bot still records intent
+  bookingMethod      String? // null when not bookable
+  // Free-text instructions for the concierge or for staff. Shown to the
+  // bot context (e.g. "All Sky Bar tables are walk-in only after 21:00")
+  bookingInstructions String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -152,6 +182,16 @@ model Service {
   // Category groups services for the dashboard:
   //   "spa_treatment" | "spa_access" | "transfer" | "activity" | "general"
   category    String  @default("general")
+
+  // ── Bookability ────────────────────────────────────
+  // bookable=true → the concierge can actually book this service end-to-end
+  // (e.g. spa appointment, airport transfer pickup). bookable=false → the
+  // service is informational only; the bot describes it, prices it, but
+  // MUST send the guest to a real human (front desk / spa reception / phone
+  // number) to complete the booking. Default false.
+  bookable           Boolean @default(false)
+  bookingMethod      String? // "internal" | "calendar" | "external" | "manual"
+  bookingInstructions String?
 
   hotelId String
   hotel   Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)

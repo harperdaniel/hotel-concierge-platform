@@ -55,8 +55,14 @@ export const updateHotelSchema = z.object({
   smtpPass: z.string().optional(),
   smtpFromName: z.string().optional(),
   smtpFromEmail: z.union([z.string().email(), z.literal("")]).optional(),
+  // Bookability
+  roomServiceBookable: z.boolean().optional(),
+  roomServiceBookingNotes: z.string().nullable().optional(),
   ...facilityFlags,
 });
+
+// ── Bookability ───────────────────────────────────────
+export const bookingMethodEnum = z.enum(["internal", "calendar", "external", "manual"]);
 
 // ── Knowledge ─────────────────────────────────────────
 
@@ -82,6 +88,9 @@ export const createServiceSchema = z.object({
   durationMin: z.number().int().positive().optional(),
   price: z.number().int().min(0).optional(),
   category: z.enum(["spa_treatment", "spa_access", "transfer", "activity", "general"]).optional(),
+  bookable: z.boolean().optional(),
+  bookingMethod: bookingMethodEnum.nullable().optional(),
+  bookingInstructions: z.string().nullable().optional(),
 });
 
 // ── Bookings ──────────────────────────────────────────

@@ -37,6 +37,8 @@ export interface User {
   role: string;
 }
 
+export type BookingMethod = 'internal' | 'calendar' | 'external' | 'manual';
+
 export interface Venue {
   id: string;
   name: string;
@@ -45,6 +47,10 @@ export interface Venue {
   hours: string | null;
   location: string | null;
   active: boolean;
+  // Bookability
+  bookable?: boolean;
+  bookingMethod?: BookingMethod | null;
+  bookingInstructions?: string | null;
   createdAt?: string;
   updatedAt?: string;
   hotelId?: string;
@@ -72,6 +78,9 @@ export interface Hotel {
   smtpFromEmail?: string | null;
   // The human name the guest concierge uses (default 'Alfred Pennyworth')
   conciergeName?: string;
+  // Room service bookability (hotel-level)
+  roomServiceBookable?: boolean;
+  roomServiceBookingNotes?: string | null;
   // Facility flags
   hasRestaurant?: boolean;
   hasRoomService?: boolean;
@@ -128,6 +137,10 @@ export interface Service {
   durationMin: number | null;
   price: number | null;
   category?: 'spa_treatment' | 'spa_access' | 'transfer' | 'activity' | 'general' | string;
+  // Bookability
+  bookable?: boolean;
+  bookingMethod?: BookingMethod | null;
+  bookingInstructions?: string | null;
 }
 
 export interface Booking {
@@ -207,6 +220,16 @@ export async function createMenuItem(hotelId: string, item: Partial<MenuItem>) {
 export async function createService(hotelId: string, service: Partial<Service>) {
   const { data } = await api.post(`/hotels/${hotelId}/services`, service);
   return data as { service: Service };
+}
+
+export async function updateService(serviceId: string, payload: Partial<Service>) {
+  const { data } = await api.patch(`/hotels/services/${serviceId}`, payload);
+  return data as { service: Service };
+}
+
+export async function deleteServiceApi(serviceId: string) {
+  const { data } = await api.delete(`/hotels/services/${serviceId}`);
+  return data;
 }
 
 export async function listBookings(hotelId: string) {

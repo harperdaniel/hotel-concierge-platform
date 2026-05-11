@@ -3,8 +3,63 @@ import { useParams, Link, useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Layout from '../components/Layout';
-import { getHotel, updateHotel, createKnowledge, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, listVenues, createVenue, addVenueMenuItem, createService, type Hotel, type KnowledgeEntry, type ProvisionStatus, type ChatMsg, type Venue } from '../lib/api';
-import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves, Building2, Wine, Dumbbell, Briefcase, Plane, Dog, BedDouble, Coffee, ChefHat, UserCircle } from 'lucide-react';
+import { getHotel, updateHotel, createKnowledge, provisionHotel, deprovisionHotel, getProvisionStatus, sendTestWelcomeEmail, getWelcomeEmailPreview, verifyHotelSmtp, getStaffToken, managerChat, listVenues, createVenue, updateVenue, addVenueMenuItem, createService, updateService, type Hotel, type KnowledgeEntry, type ProvisionStatus, type ChatMsg, type Venue } from '../lib/api';
+import { ArrowLeft, Save, Plus, Utensils, BookOpen, ConciergeBell, Bot, Rocket, Trash2, CheckCircle, XCircle, Loader, Send, Mail, Server, Sparkles, Mic, MicOff, Waves, Building2, Wine, Dumbbell, Briefcase, Plane, Dog, BedDouble, Coffee, ChefHat, UserCircle, BookCheck, Info } from 'lucide-react';
+
+// ── Bookable badge ─ reusable visual flag distinguishing offerings the
+// concierge can actually book end-to-end ("Bookable") from those that are
+// purely informational ("Info only"). Click to toggle when an onToggle
+// handler is provided.
+function BookableBadge({
+  bookable,
+  bookingMethod,
+  onToggle,
+  busy,
+  size = 'sm',
+  title,
+}: {
+  bookable: boolean;
+  bookingMethod?: string | null;
+  onToggle?: () => void;
+  busy?: boolean;
+  size?: 'sm' | 'xs';
+  title?: string;
+}) {
+  const pad = size === 'xs' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-xs';
+  const base = 'inline-flex items-center gap-1 rounded-full font-medium border whitespace-nowrap';
+  const tone = bookable
+    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+    : 'bg-amber-50 text-amber-800 border-amber-200';
+  const Icon = bookable ? BookCheck : Info;
+  const label = bookable
+    ? `Bookable${bookingMethod && bookingMethod !== 'internal' ? ` (${bookingMethod})` : ''}`
+    : 'Info only';
+  const tooltip =
+    title ||
+    (bookable
+      ? 'The concierge can take a booking for this and staff will see it in the pending-bookings queue.'
+      : 'The concierge will describe this but will not take a booking — it tells the guest to call the front desk or visit in person. Click to make bookable.');
+  if (!onToggle) {
+    return (
+      <span className={`${base} ${tone} ${pad}`} title={tooltip}>
+        <Icon size={size === 'xs' ? 11 : 13} />
+        {label}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={busy}
+      title={tooltip}
+      className={`${base} ${tone} ${pad} hover:brightness-95 disabled:opacity-50`}
+    >
+      {busy ? <Loader size={size === 'xs' ? 11 : 13} className="animate-spin" /> : <Icon size={size === 'xs' ? 11 : 13} />}
+      {label}
+    </button>
+  );
+}
 
 export default function HotelDetail() {
   const { id } = useParams<{ id: string }>();
@@ -297,6 +352,17 @@ function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
   const treatments = (hotel.services || []).filter((sv: any) => sv.category === "spa_treatment");
   const accesses = (hotel.services || []).filter((sv: any) => sv.category === "spa_access");
   const hasSpa = (hotel as any).hasSpa === true;
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  async function toggleBookable(serviceId: string, current: boolean) {
+    setTogglingId(serviceId);
+    try {
+      await updateService(serviceId, { bookable: !current });
+      onChanged();
+    } finally {
+      setTogglingId(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -305,7 +371,7 @@ function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-gray-900">Spa</h3>
           <p className="text-sm text-gray-500">
-            Treatments and access passes guests can book through the concierge.
+            Treatments and access passes. Each entry is either <strong>Bookable</strong> (the concierge handles the booking) or <strong>Info only</strong> (guests are directed to the spa reception). Tap the badge to flip.
           </p>
         </div>
       </div>
@@ -322,8 +388,17 @@ function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
         {treatments.map((t: any) => (
           <div key={t.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-gray-900">{t.name}</p>
-              {t.description && <p className="text-sm text-gray-500">{t.description}</p>}
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium text-gray-900">{t.name}</p>
+                <BookableBadge
+                  bookable={!!t.bookable}
+                  bookingMethod={t.bookingMethod}
+                  onToggle={() => toggleBookable(t.id, !!t.bookable)}
+                  busy={togglingId === t.id}
+                  size="xs"
+                />
+              </div>
+              {t.description && <p className="text-sm text-gray-500 mt-1">{t.description}</p>}
             </div>
             <div className="sm:text-right shrink-0">
               {t.price && <p className="font-semibold">{(t.price / 100).toFixed(2)} NOK</p>}
@@ -345,8 +420,17 @@ function SpaTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void }) {
         {accesses.map((a: any) => (
           <div key={a.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-gray-900">{a.name}</p>
-              {a.description && <p className="text-sm text-gray-500">{a.description}</p>}
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium text-gray-900">{a.name}</p>
+                <BookableBadge
+                  bookable={!!a.bookable}
+                  bookingMethod={a.bookingMethod}
+                  onToggle={() => toggleBookable(a.id, !!a.bookable)}
+                  busy={togglingId === a.id}
+                  size="xs"
+                />
+              </div>
+              {a.description && <p className="text-sm text-gray-500 mt-1">{a.description}</p>}
             </div>
             <div className="sm:text-right shrink-0">
               {a.price && <p className="font-semibold">{(a.price / 100).toFixed(2)} NOK</p>}
@@ -371,11 +455,23 @@ function ServicesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void
   const services = (hotel.services || []).filter(
     (sv: any) => sv.category !== "spa_treatment" && sv.category !== "spa_access"
   );
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  async function toggleBookable(serviceId: string, current: boolean) {
+    setTogglingId(serviceId);
+    try {
+      await updateService(serviceId, { bookable: !current });
+      onChanged();
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-semibold text-gray-900">Services</h3>
-        <p className="text-sm text-gray-500">Transfers, activities, and other guest services bookable through the concierge.</p>
+        <p className="text-sm text-gray-500">Transfers, activities, and other guest services. Each is either <strong>Bookable</strong> (concierge handles it) or <strong>Info only</strong> (guests are pointed to the right human). Tap the badge to flip.</p>
       </div>
 
       {services.length === 0 ? (
@@ -385,8 +481,17 @@ function ServicesTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => void
           {services.map((sv: any) => (
             <div key={sv.id} className="bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded text-gray-600">{sv.category || "general"}</span>
-                <span className="ml-2 font-medium text-gray-900">{sv.name}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded text-gray-600">{sv.category || "general"}</span>
+                  <span className="font-medium text-gray-900">{sv.name}</span>
+                  <BookableBadge
+                    bookable={!!sv.bookable}
+                    bookingMethod={sv.bookingMethod}
+                    onToggle={() => toggleBookable(sv.id, !!sv.bookable)}
+                    busy={togglingId === sv.id}
+                    size="xs"
+                  />
+                </div>
                 {sv.description && <p className="text-sm text-gray-500 mt-1">{sv.description}</p>}
               </div>
               <div className="sm:text-right shrink-0">
@@ -432,6 +537,7 @@ function ServiceQuickAdd({
   const [duration, setDuration] = useState("");
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState<string>(fixedCategory || defaultCategory || "general");
+  const [bookable, setBookable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -447,8 +553,9 @@ function ServiceQuickAdd({
         durationMin: duration ? parseInt(duration, 10) : undefined,
         price: price ? Math.round(parseFloat(price) * 100) : undefined,
         category: (fixedCategory || category) as any,
+        bookable,
       });
-      setName(""); setDescription(""); setDuration(""); setPrice("");
+      setName(""); setDescription(""); setDuration(""); setPrice(""); setBookable(false);
       setOpen(false);
       onSaved?.();
     } catch (err: any) {
@@ -486,6 +593,13 @@ function ServiceQuickAdd({
           </select>
         )}
       </div>
+      <label className="flex items-start gap-2 text-xs text-gray-700 bg-gray-50 border rounded-lg p-2.5">
+        <input type="checkbox" checked={bookable} onChange={(e) => setBookable(e.target.checked)} className="mt-0.5" />
+        <span>
+          <strong>Bookable through the concierge.</strong>{' '}
+          <span className="text-gray-500">When checked, the concierge can book this for guests. Leave unchecked if guests need to handle the booking with the spa reception or another channel.</span>
+        </span>
+      </label>
       {error && <div className="text-xs text-red-600">{error}</div>}
       <div className="flex gap-2">
         <button type="submit" disabled={saving || !name.trim()} className="flex items-center gap-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
@@ -877,11 +991,20 @@ function buildOpeningMessage(hotel: Hotel): string {
     missing.push('any items at all yet');
   }
 
+  // Bookability gap — the concierge is only as good as what we let it book.
+  const venuesInfoOnly = (hotel.venues || []).filter((v: any) => !v.bookable).length;
+  const servicesInfoOnly = (hotel.services || []).filter((s: any) => !s.bookable).length;
+  const roomServiceInfoOnly = hotel.hasRoomService && !hotel.roomServiceBookable;
+  const totalInfoOnly = venuesInfoOnly + servicesInfoOnly + (roomServiceInfoOnly ? 1 : 0);
+
   // Compose the message
   const greeting = `Hi! I'm your AI Manager for **${hotel.name}**. 👋`;
+  const bookabilityNudge = totalInfoOnly > 0
+    ? `\n\n⚠️ **Heads up on bookability.** ${totalInfoOnly} of your offerings are still marked **Info only** — meaning the concierge can describe them but won't actually take a reservation. Guests will be sent to the front desk for those. If you want me to take bookings end-to-end for any of them, just tell me which ones and I'll flip them to **Bookable**.`
+    : '';
 
   if (missing.length === 0) {
-    return `${greeting}\n\nLooking good — your hotel has venues, menu items, services, and knowledge configured. I'm here whenever you want to add or update anything. Just tell me what you'd like to do!\n\nA few things you could try:\n- "Add a Negroni for 165 kr to the Sky Bar"\n- "Update breakfast hours to 06:30–10:30"\n- "Show me what's on my menu"\n\n🎙️ Tap the mic to speak instead of type — works in Norwegian or English.`;
+    return `${greeting}\n\nLooking good — your hotel has venues, menu items, services, and knowledge configured. I'm here whenever you want to add or update anything. Just tell me what you'd like to do!${bookabilityNudge}\n\nA few things you could try:\n- "Add a Negroni for 165 kr to the Sky Bar"\n- "Update breakfast hours to 06:30–10:30"\n- "Make the spa treatments bookable"\n- "Show me what's on my menu"\n\n🎙️ Tap the mic to speak instead of type — works in Norwegian or English.`;
   }
 
   // Build a friendly list of missing items
@@ -899,7 +1022,7 @@ function buildOpeningMessage(hotel: Hotel): string {
     ? `\n\n🌐 I have your website on file (${hotel.website}). I can re-read it for anything I missed during onboarding — just ask.`
     : `\n\n- 🌐 **Got a website?** Drop the URL and I'll pull menus, hours, and services from there — you just confirm or correct what I find. Way faster than typing.`;
 
-  return `${greeting}\n\nI took a look at your setup and noticed you haven't added **${missingList}** yet.\n\nWant me to walk you through it? Just say *"yes"* and I'll get going.${websitePath}\n\nOr, jump to the relevant tab and do it yourself — **I'm here either way.** 😊\n\n🎙️ You can also speak instead of type — Norwegian or English.`;
+  return `${greeting}\n\nI took a look at your setup and noticed you haven't added **${missingList}** yet.\n\nWant me to walk you through it? Just say *"yes"* and I'll get going.${websitePath}${bookabilityNudge}\n\nOr, jump to the relevant tab and do it yourself — **I'm here either way.** 😊\n\n🎙️ You can also speak instead of type — Norwegian or English.`;
 }
 
 function describeToolCall(tc: { name: string; args: any; result: any }): string {
@@ -1554,8 +1677,9 @@ function RestaurantsTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => v
   const [showAddForm, setShowAddForm] = useState((hotel.venues || []).length === 0);
 
   // Edit/add UI state
-  const [newVenue, setNewVenue] = useState({ name: '', kind: 'restaurant', hours: '', location: '' });
+  const [newVenue, setNewVenue] = useState({ name: '', kind: 'restaurant', hours: '', location: '', bookable: false });
   const [creatingVenue, setCreatingVenue] = useState(false);
+  const [togglingVenue, setTogglingVenue] = useState<string | null>(null);
 
   // Item-add state, per venue
   const [itemDrafts, setItemDrafts] = useState<Record<string, { name: string; description: string; price: string; category: string; availableForRoomService: boolean }>>({});
@@ -1579,13 +1703,25 @@ function RestaurantsTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => v
         kind: newVenue.kind as any,
         hours: newVenue.hours.trim() || null,
         location: newVenue.location.trim() || null,
+        bookable: newVenue.bookable,
       });
-      setNewVenue({ name: '', kind: 'restaurant', hours: '', location: '' });
+      setNewVenue({ name: '', kind: 'restaurant', hours: '', location: '', bookable: false });
       setShowAddForm(false);
       await refreshVenues();
       onChanged();
     } finally {
       setCreatingVenue(false);
+    }
+  }
+
+  async function toggleVenueBookable(venue: Venue) {
+    setTogglingVenue(venue.id);
+    try {
+      await updateVenue(venue.id, { bookable: !venue.bookable });
+      await refreshVenues();
+      onChanged();
+    } finally {
+      setTogglingVenue(null);
     }
   }
 
@@ -1668,6 +1804,18 @@ function RestaurantsTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => v
               className="px-3 py-2 border rounded-lg text-sm"
             />
           </div>
+          <label className="flex items-start gap-2 text-sm text-gray-700 bg-gray-50 border rounded-lg p-3">
+            <input
+              type="checkbox"
+              checked={newVenue.bookable}
+              onChange={(e) => setNewVenue({ ...newVenue, bookable: e.target.checked })}
+              className="mt-0.5"
+            />
+            <span>
+              <strong>Bookable through the concierge.</strong>{' '}
+              <span className="text-gray-500">If checked, the concierge can take reservations and they'll land in the pending-bookings queue. Leave unchecked if guests need to call the venue or front desk directly.</span>
+            </span>
+          </label>
           <div className="flex gap-2">
             <button
               onClick={handleCreateVenue}
@@ -1700,7 +1848,18 @@ function RestaurantsTab({ hotel, onChanged }: { hotel: Hotel; onChanged: () => v
               <div className="flex items-start gap-3">
                 <Icon size={22} className="text-blue-600 mt-1" />
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-gray-900">{venue.name}</h4>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-semibold text-gray-900">{venue.name}</h4>
+                    <BookableBadge
+                      bookable={!!venue.bookable}
+                      bookingMethod={venue.bookingMethod || null}
+                      onToggle={() => toggleVenueBookable(venue)}
+                      busy={togglingVenue === venue.id}
+                      title={venue.bookable
+                        ? 'Click to make this venue informational only. The concierge will stop taking reservations.'
+                        : 'Click to allow the concierge to take reservations. Bookings will land in the pending-bookings queue.'}
+                    />
+                  </div>
                   <div className="text-xs text-gray-500 flex flex-wrap gap-3 mt-1">
                     <span>{VENUE_KIND_LABELS[venue.kind] || venue.kind}</span>
                     {venue.hours && <span>🕐 {venue.hours}</span>}
@@ -1895,6 +2054,24 @@ function FacilitiesTab({ hotel, onChanged, onJumpTab }: { hotel: Hotel; onChange
   const enabledFacilities = FACILITY_DEFS.filter((d) => hotel[d.flagKey]).length;
   const provisioned = !!(hotel as any).openclawConfig?.active;
 
+  // ── Bookability summary ────────────────────────────────────
+  const bookableVenues = (hotel.venues || []).filter((v: any) => v.bookable).length;
+  const bookableServices = (hotel.services || []).filter((s: any) => s.bookable).length;
+  const totalOfferings = venuesCount + servicesCount + (hotel.hasRoomService ? 1 : 0);
+  const bookableOfferings = bookableVenues + bookableServices + (hotel.roomServiceBookable ? 1 : 0);
+  const allBookable = totalOfferings > 0 && bookableOfferings === totalOfferings;
+  const noneBookable = totalOfferings > 0 && bookableOfferings === 0;
+  const [roomServiceBusy, setRoomServiceBusy] = useState(false);
+  async function toggleRoomService() {
+    setRoomServiceBusy(true);
+    try {
+      await updateHotel(hotel.id, { roomServiceBookable: !hotel.roomServiceBookable } as any);
+      onChanged();
+    } finally {
+      setRoomServiceBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header with quick edit hotel info link */}
@@ -1928,6 +2105,65 @@ function FacilitiesTab({ hotel, onChanged, onJumpTab }: { hotel: Hotel; onChange
           onClick={() => onJumpTab('bots')}
         />
       </div>
+
+      {/* Bookability summary — makes it obvious at a glance which offerings the
+          concierge can actually book vs. which are info-only. */}
+      {totalOfferings > 0 && (
+        <div className={`rounded-xl border p-4 sm:p-5 ${allBookable ? 'bg-emerald-50 border-emerald-200' : noneBookable ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <BookCheck size={22} className={allBookable ? 'text-emerald-600 mt-0.5' : noneBookable ? 'text-amber-600 mt-0.5' : 'text-gray-500 mt-0.5'} />
+              <div className="min-w-0 flex-1">
+                <h4 className="font-semibold text-gray-900">Bookability — {bookableOfferings} of {totalOfferings} offerings are bookable</h4>
+                <p className="text-sm text-gray-600 mt-0.5">
+                  {allBookable && 'Everything is wired up — the concierge can book all of your offerings end-to-end. 🎉'}
+                  {noneBookable && 'Nothing is bookable yet. The concierge will describe your offerings but cannot take a single reservation — guests will be sent to the front desk for everything.'}
+                  {!allBookable && !noneBookable && 'Offerings marked Info only are described to guests but the concierge does NOT take their booking — it redirects to the front desk or another channel.'}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                  <span className="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2 py-0.5">
+                    Venues: <strong>{bookableVenues}/{venuesCount}</strong> bookable
+                  </span>
+                  <span className="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2 py-0.5">
+                    Services: <strong>{bookableServices}/{servicesCount}</strong> bookable
+                  </span>
+                  {hotel.hasRoomService && (
+                    <span className="inline-flex items-center gap-1 bg-white border border-gray-200 rounded-full px-2 py-0.5">
+                      Room service: <strong>{hotel.roomServiceBookable ? 'Bookable' : 'Info only'}</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            {!allBookable && (
+              <button
+                onClick={() => onJumpTab('menu')}
+                className="shrink-0 inline-flex items-center gap-1 bg-blue-600 text-white text-sm font-medium px-3 py-2 rounded-lg hover:bg-blue-700"
+              >
+                <Sparkles size={14} /> Wire up bookings
+              </button>
+            )}
+          </div>
+
+          {hotel.hasRoomService && (
+            <div className="mt-3 pt-3 border-t border-gray-200/60 flex flex-wrap items-center gap-3">
+              <BedDouble size={16} className="text-rose-600" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900">Room service bookable through the concierge?</p>
+                <p className="text-xs text-gray-500">When off, the concierge can show the menu but must direct guests to call the kitchen/front desk to actually order.</p>
+              </div>
+              <BookableBadge
+                bookable={!!hotel.roomServiceBookable}
+                onToggle={toggleRoomService}
+                busy={roomServiceBusy}
+                title={hotel.roomServiceBookable
+                  ? 'Click to stop accepting room-service orders through the concierge. Guests will be told the right channel instead.'
+                  : 'Click to let the concierge take room-service orders. Orders will land in the pending-bookings queue for staff.'}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Facilities grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

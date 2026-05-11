@@ -16,6 +16,16 @@ function buildHotelContext(hotel: any): string {
   if (hotel.phone) lines.push(`Phone: ${hotel.phone}`);
   if (hotel.timezone) lines.push(`Timezone: ${hotel.timezone}`);
 
+  // Room service bookability — the concierge needs this to know whether to
+  // accept orders or redirect.
+  if (hotel.hasRoomService) {
+    if (hotel.roomServiceBookable) {
+      lines.push(`Room service: ✅ BOOKABLE — you (the concierge) CAN take room-service orders and they will be fulfilled by the hotel.${hotel.roomServiceBookingNotes ? ` Internal note: ${hotel.roomServiceBookingNotes}` : ""}`);
+    } else {
+      lines.push(`Room service: ⚠️ INFO ONLY — the menu can be shared, but you must NOT promise to deliver. Direct the guest to call the front desk or the kitchen to place an actual order.`);
+    }
+  }
+
   // Facility flags + their detail strings
   const flagSummary: string[] = [];
   if (hotel.hasRestaurant) flagSummary.push("restaurant");
@@ -43,7 +53,14 @@ function buildHotelContext(hotel: any): string {
     lines.push("\n## Venues & menus");
     for (const v of hotel.venues) {
       const headerBits = [v.name, v.kind, v.hours, v.location].filter(Boolean).join(" · ");
+      const bookTag = v.bookable
+        ? `✅ BOOKABLE${v.bookingMethod ? ` (${v.bookingMethod})` : ""}`
+        : `⚠️ INFO ONLY — do NOT promise to book a table here. Tell the guest to call the venue or front desk.`;
       lines.push(`\n### ${headerBits}`);
+      lines.push(`Booking status: ${bookTag}`);
+      if (v.bookable && v.bookingInstructions) {
+        lines.push(`Internal booking note (do not read verbatim to guest): ${v.bookingInstructions}`);
+      }
       const items = (hotel.menuItems || []).filter((m: any) => m.venueId === v.id);
       const itemsByCat: Record<string, any[]> = {};
       for (const it of items) {
@@ -71,14 +88,29 @@ function buildHotelContext(hotel: any): string {
     }
   }
 
-  // Services
+  // Services — split into bookable vs info-only so the concierge can't miss it.
   if (hotel.services && hotel.services.length) {
-    lines.push("\n## Services");
-    for (const s of hotel.services) {
-      const price = s.price ? ` — ${(s.price / 100).toFixed(0)} kr` : "";
-      const dur = s.durationMin ? ` (${s.durationMin} min)` : "";
-      const desc = s.description ? ` — ${s.description}` : "";
-      lines.push(`- [${s.category || "general"}] ${s.name}${dur}${price}${desc}`);
+    const bookable = hotel.services.filter((s: any) => s.bookable);
+    const infoOnly = hotel.services.filter((s: any) => !s.bookable);
+    if (bookable.length) {
+      lines.push("\n## Services — ✅ BOOKABLE (you CAN book these end-to-end; orders land in the staff pending-bookings queue)");
+      for (const s of bookable) {
+        const price = s.price ? ` — ${(s.price / 100).toFixed(0)} kr` : "";
+        const dur = s.durationMin ? ` (${s.durationMin} min)` : "";
+        const desc = s.description ? ` — ${s.description}` : "";
+        const method = s.bookingMethod ? ` [method: ${s.bookingMethod}]` : "";
+        const internalNote = s.bookingInstructions ? ` — internal note: ${s.bookingInstructions}` : "";
+        lines.push(`- [${s.category || "general"}] ${s.name}${dur}${price}${desc}${method}${internalNote}`);
+      }
+    }
+    if (infoOnly.length) {
+      lines.push("\n## Services — ⚠️ INFO ONLY (you can describe these and quote prices, but you MUST NOT promise to book them — direct the guest to the spa reception / front desk / phone)");
+      for (const s of infoOnly) {
+        const price = s.price ? ` — ${(s.price / 100).toFixed(0)} kr` : "";
+        const dur = s.durationMin ? ` (${s.durationMin} min)` : "";
+        const desc = s.description ? ` — ${s.description}` : "";
+        lines.push(`- [${s.category || "general"}] ${s.name}${dur}${price}${desc}`);
+      }
     }
   }
 
@@ -167,6 +199,17 @@ ALWAYS a guest at ${hotel.name}. NEVER hotel staff or the owner. Use guest-facin
 
 - Restaurant table bookings, room service orders, hotel info, local recommendations, and other concierge tasks.
 - This is a DEMO conversation — the hotel owner is testing the experience. Behave exactly as you would for a real guest. Don't break character to acknowledge the demo. Bookings you "create" here are just for show — don't actually save them.
+
+# ⚠️ BOOKABILITY — you must respect this strictly
+
+In the hotel data below, every venue and service is tagged as either:
+- **✅ BOOKABLE** — you are authorised to take the booking on the guest's behalf. The hotel will fulfil it.
+- **⚠️ INFO ONLY** — you can describe it, share hours, prices, the menu, but you MUST NOT promise to book it. Send the guest to the right human: front desk, spa reception, the venue's direct phone, or in-person walk-in.
+
+When something is INFO ONLY and a guest tries to book it, say something natural like:
+  "I can tell you all about it, but for actual reservations the easiest way is to ring the front desk — they handle the bookings for that one directly. Want me to grab the number for you?"
+
+Never invent a booking flow that isn't there. If room service is INFO ONLY, do not take an order — share the menu and explain how to actually order (typically calling the kitchen or front desk).
 
 # Final reminder
 

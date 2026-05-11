@@ -15,7 +15,7 @@ import {
   listHotels, getHotel, createHotel, updateHotel, deleteHotel,
   createKnowledge, listKnowledge,
   createMenuItem, listMenuItems,
-  createService, listServices,
+  createService, listServices, updateService, deleteService,
   createBooking, listBookings,
 } from "../controllers/hotels";
 
@@ -190,6 +190,8 @@ router.post("/:id/menu", validate(createMenuItemSchema), createMenuItem);
 // Services
 router.get("/:id/services", listServices);
 router.post("/:id/services", validate(createServiceSchema), createService);
+router.patch("/services/:id", updateService);
+router.delete("/services/:id", deleteService);
 
 // Bookings
 router.get("/:id/bookings", listBookings);

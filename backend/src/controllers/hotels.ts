@@ -205,6 +205,59 @@ export async function listServices(req: Request, res: Response): Promise<void> {
   res.json({ services });
 }
 
+const VALID_BOOKING_METHODS = ["internal", "calendar", "external", "manual"];
+
+export async function updateService(req: Request, res: Response): Promise<void> {
+  const id = param(req, "id");
+  const service = await prisma.service.findUnique({
+    where: { id },
+    include: { hotel: true },
+  });
+  if (!service || service.hotel.userId !== req.user!.userId) {
+    res.status(404).json({ error: "Service not found" });
+    return;
+  }
+  const allowed = [
+    "name", "description", "durationMin", "price", "category",
+    "bookable", "bookingMethod", "bookingInstructions",
+  ];
+  const updates: Record<string, any> = {};
+  for (const k of allowed) if (k in (req.body || {})) updates[k] = req.body[k];
+  if (typeof updates.price === "number") updates.price = Math.round(updates.price);
+  if (typeof updates.durationMin === "number") updates.durationMin = Math.round(updates.durationMin);
+  if (updates.bookingMethod && !VALID_BOOKING_METHODS.includes(updates.bookingMethod)) {
+    res.status(400).json({ error: `bookingMethod must be one of: ${VALID_BOOKING_METHODS.join(", ")}` });
+    return;
+  }
+  // Keep state consistent when toggling bookable.
+  if (updates.bookable === false) {
+    updates.bookingMethod = null;
+    updates.bookingInstructions = null;
+  } else if (updates.bookable === true && !updates.bookingMethod && !service.bookingMethod) {
+    updates.bookingMethod = "internal";
+  }
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No updates" });
+    return;
+  }
+  const updated = await prisma.service.update({ where: { id }, data: updates });
+  res.json({ service: updated });
+}
+
+export async function deleteService(req: Request, res: Response): Promise<void> {
+  const id = param(req, "id");
+  const service = await prisma.service.findUnique({
+    where: { id },
+    include: { hotel: true },
+  });
+  if (!service || service.hotel.userId !== req.user!.userId) {
+    res.status(404).json({ error: "Service not found" });
+    return;
+  }
+  await prisma.service.delete({ where: { id } });
+  res.json({ deleted: true });
+}
+
 // ── Bookings ──────────────────────────────────────────
 
 export async function createBooking(req: Request, res: Response): Promise<void> {
